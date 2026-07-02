@@ -6,6 +6,7 @@ import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { BudgetPanel } from "@/components/budget-panel";
 import { TransactionModal } from "@/components/transaction-modal";
+import { TransactionStatusBadge } from "@/components/transaction-status-badge";
 import { Card, CardTitle, CardValue } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -142,6 +143,7 @@ export default function DashboardPage() {
                             {t.type === "diaria" ? " · diário" : ""}
                           </p>
                         </div>
+                        <TransactionStatusBadge status={t.status} />
                         <span
                           className={`font-semibold ${
                             t.direction === "in" ? "text-income" : "text-expense"

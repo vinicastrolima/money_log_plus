@@ -5,6 +5,8 @@ import { Plus, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { TransactionModal } from "@/components/transaction-modal";
+import { TransactionStatusBadge } from "@/components/transaction-status-badge";
+import { dominantStatus, TX_STATUS } from "@/lib/transaction-status";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { filterByMonth } from "@/lib/budget";
@@ -15,6 +17,7 @@ import {
   toISODate,
   WEEKDAYS_PT,
   formatDateBR,
+  cn,
 } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 
@@ -113,11 +116,17 @@ export default function CalendarPage() {
               const iso = toISODate(new Date(year, month0, day));
               const agg = byDay.get(day);
               const isToday = iso === todayStr;
+              const dayStatus = agg
+                ? dominantStatus(agg.txs.map((t) => t.status))
+                : null;
               return (
                 <button
                   key={i}
                   onClick={() => setSelectedDate(iso)}
-                  className="min-h-[84px] border-b border-r border-border p-1.5 text-left align-top transition-colors hover:bg-slate-50 cursor-pointer"
+                  className={cn(
+                    "min-h-[84px] border-b border-r border-border p-1.5 text-left align-top transition-colors hover:bg-slate-50 cursor-pointer",
+                    dayStatus && `border-l-[3px] ${TX_STATUS[dayStatus].border}`
+                  )}
                 >
                   <div className="flex items-center justify-between">
                     <span
@@ -156,9 +165,18 @@ export default function CalendarPage() {
       )}
 
       {/* Legenda */}
-      <div className="flex items-center gap-4 text-xs text-muted">
+      <div className="flex flex-wrap items-center gap-4 text-xs text-muted">
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-amber-500" /> gasto diário no dia
+          <span className="h-2 w-2 rounded-full bg-emerald-500" /> concluído
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-amber-400" /> pendente
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-red-500" /> atrasado
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-amber-500" /> gasto diário
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full bg-primary" /> hoje
@@ -207,6 +225,7 @@ export default function CalendarPage() {
                           {t.type === "diaria" ? " · diário" : ""}
                         </p>
                       </div>
+                      <TransactionStatusBadge status={t.status} />
                       <span
                         className={`text-sm font-semibold ${
                           t.direction === "in" ? "text-income" : "text-expense"

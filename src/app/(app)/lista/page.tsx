@@ -5,12 +5,13 @@ import { Plus, ArrowUpRight, ArrowDownRight, Search } from "lucide-react";
 import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { TransactionModal } from "@/components/transaction-modal";
+import { TransactionStatusBadge } from "@/components/transaction-status-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { filterByMonth, summarizeMonth } from "@/lib/budget";
 import { formatCurrency, formatDateBR } from "@/lib/utils";
-import type { Direction, Transaction, TxType } from "@/lib/types";
+import type { Direction, Transaction, TxStatus, TxType } from "@/lib/types";
 
 export default function ListPage() {
   const { loading, transactions, categories, categoryById } = useData();
@@ -20,6 +21,7 @@ export default function ListPage() {
   const [direction, setDirection] = React.useState<Direction | "all">("all");
   const [type, setType] = React.useState<TxType | "all">("all");
   const [categoryId, setCategoryId] = React.useState<string>("all");
+  const [statusFilter, setStatusFilter] = React.useState<TxStatus | "all">("all");
   const [search, setSearch] = React.useState("");
 
   const [modalOpen, setModalOpen] = React.useState(false);
@@ -31,12 +33,14 @@ export default function ListPage() {
     if (type !== "all") txs = txs.filter((t) => t.type === type);
     if (categoryId !== "all")
       txs = txs.filter((t) => (t.category_id ?? "none") === categoryId);
+    if (statusFilter !== "all")
+      txs = txs.filter((t) => t.status === statusFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       txs = txs.filter((t) => t.description.toLowerCase().includes(q));
     }
     return txs;
-  }, [transactions, year, month0, direction, type, categoryId, search]);
+  }, [transactions, year, month0, direction, type, categoryId, statusFilter, search]);
 
   const summary = summarizeMonth(filtered);
 
@@ -68,7 +72,7 @@ export default function ListPage() {
       </div>
 
       {/* Filtros */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="relative">
           <Search
             size={16}
@@ -102,6 +106,15 @@ export default function ListPage() {
             </option>
           ))}
           <option value="none">Sem categoria</option>
+        </Select>
+        <Select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as TxStatus | "all")}
+        >
+          <option value="all">Todos os status</option>
+          <option value="concluido">Concluído</option>
+          <option value="pendente">Pendente</option>
+          <option value="atrasado">Atrasado</option>
         </Select>
       </div>
 
@@ -169,6 +182,7 @@ export default function ListPage() {
                           {t.type === "diaria" ? " · diário" : ""}
                         </p>
                       </div>
+                      <TransactionStatusBadge status={t.status} />
                       <span
                         className={`font-semibold ${
                           t.direction === "in" ? "text-income" : "text-expense"

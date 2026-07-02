@@ -28,6 +28,7 @@ create table if not exists public.transactions (
   direction text not null check (direction in ('in', 'out')),
   category_id uuid references public.categories (id) on delete set null,
   type text not null default 'prevista' check (type in ('prevista', 'diaria')),
+  status text not null default 'pendente' check (status in ('concluido', 'pendente', 'atrasado')),
   created_at timestamptz not null default now()
 );
 

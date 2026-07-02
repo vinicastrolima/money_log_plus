@@ -5,8 +5,10 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { useData } from "@/components/data-provider";
-import type { Direction, Transaction, TxType } from "@/lib/types";
+import type { Direction, Transaction, TxStatus, TxType } from "@/lib/types";
+import { TX_STATUS, TX_STATUS_ORDER, suggestStatusForDate } from "@/lib/transaction-status";
 import { toISODate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -32,6 +34,7 @@ export function TransactionModal({
   const [direction, setDirection] = React.useState<Direction>("out");
   const [categoryId, setCategoryId] = React.useState<string>("");
   const [isDaily, setIsDaily] = React.useState(false);
+  const [status, setStatus] = React.useState<TxStatus>("pendente");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -44,16 +47,24 @@ export function TransactionModal({
       setDirection(transaction.direction);
       setCategoryId(transaction.category_id ?? "");
       setIsDaily(transaction.type === "diaria");
+      setStatus(transaction.status);
     } else {
-      setDate(defaultDate ?? toISODate(new Date()));
+      const initialDate = defaultDate ?? toISODate(new Date());
+      setDate(initialDate);
       setDescription("");
       setAmount("");
       setDirection("out");
       setCategoryId("");
       setIsDaily(false);
+      setStatus(suggestStatusForDate(initialDate));
     }
     setError(null);
   }, [open, transaction, defaultDate]);
+
+  React.useEffect(() => {
+    if (!open || transaction) return;
+    setStatus(suggestStatusForDate(date));
+  }, [open, transaction, date]);
 
   const visibleCategories = categories.filter(
     (c) => c.kind === "both" || (direction === "in" ? c.kind === "income" : c.kind === "expense")
@@ -74,6 +85,7 @@ export function TransactionModal({
       direction,
       category_id: categoryId || null,
       type: (isDaily ? "diaria" : "prevista") as TxType,
+      status,
     };
 
     setSaving(true);
@@ -198,6 +210,33 @@ export function TransactionModal({
             </span>
           </label>
         )}
+
+        <div>
+          <Label>Status</Label>
+          <p className="mb-2 text-xs text-muted">
+            Verde = concluído · Amarelo = pendente (na margem) · Vermelho = atrasado
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {TX_STATUS_ORDER.map((s) => {
+              const cfg = TX_STATUS[s];
+              const active = status === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
+                    active ? cfg.badge : "border-border text-muted hover:bg-slate-50"
+                  )}
+                >
+                  <span className={cn("h-2.5 w-2.5 rounded-full", cfg.dot)} />
+                  {cfg.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {error && <p className="text-sm text-expense">{error}</p>}
 

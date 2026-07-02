@@ -1,5 +1,6 @@
 export type Direction = "in" | "out";
 export type TxType = "prevista" | "diaria";
+export type TxStatus = "concluido" | "pendente" | "atrasado";
 export type CategoryKind = "income" | "expense" | "both";
 
 export interface Category {
@@ -20,6 +21,7 @@ export interface Transaction {
   direction: Direction;
   category_id: string | null;
   type: TxType;
+  status: TxStatus;
   created_at: string;
 }
 
@@ -40,4 +42,5 @@ export interface TransactionInput {
   direction: Direction;
   category_id: string | null;
   type: TxType;
+  status: TxStatus;
 }
