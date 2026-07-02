@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Controle Financeiro Web
 
-## Getting Started
+App pessoal de controle financeiro com visão de **calendário mensal**, **lista**, **categorias**, **gráficos** de gastos e um sistema de **orçamento diário** (meta de R$50/dia com acúmulo/envelope + valor dinâmico saldo÷dias).
 
-First, run the development server:
+## Stack
+
+- **Frontend:** Next.js (App Router) + TypeScript + Tailwind CSS v4
+- **Banco + Auth:** Supabase (PostgreSQL + Supabase Auth, login por email/senha)
+- **Gráficos:** Recharts
+- **Deploy:** Vercel (`seu-projeto.vercel.app`)
+
+## Funcionalidades
+
+- Registrar entradas (+) e saídas (−) por dia, com categoria.
+- Checkbox **"É gasto diário?"** ao lançar uma saída:
+  - **marcado** = gasto do dia a dia (consome o limite de R$/dia);
+  - **desmarcado** = conta prevista/fixa (dívida, cartão...), fora do limite diário.
+- **Painel:** saldo, entradas, saídas e o orçamento diário.
+- **Calendário:** clique no dia para ver/adicionar transações; indicador de gasto diário.
+- **Lista:** filtros por mês, categoria, tipo (prevista/diária) e direção + busca.
+- **Gráficos:** pizza por categoria, comparativo prevista × diária e movimentação por dia.
+- **Categorias:** CRUD com cores + ajuste da meta diária.
+
+## Como o orçamento diário funciona
+
+- **Meta fixa:** `R$50/dia` (configurável em Categorias).
+- **Envelope com acúmulo:** `permitido até hoje = meta × dias decorridos`; subtrai os gastos marcados como "diária". Se sobrar, acumula para os próximos dias; se ficar negativo, você estourou.
+- **Valor dinâmico:** `saldo do mês ÷ dias restantes` — mostrado lado a lado com a meta para você saber quanto realmente pode gastar por dia.
+
+## Configuração do Supabase
+
+1. Crie um projeto em [supabase.com](https://supabase.com).
+2. No painel, vá em **SQL Editor** e rode o conteúdo de [`supabase/schema.sql`](supabase/schema.sql). Isso cria as tabelas, as políticas de segurança (RLS) e um gatilho que popula categorias iniciais e a meta padrão a cada novo usuário.
+3. Em **Authentication → Providers → Email**, mantenha o provedor Email habilitado. Para testar mais rápido, você pode desativar "Confirm email" em **Authentication → Sign In / Providers** (opcional).
+4. Em **Project Settings → API**, copie a **Project URL** e a **anon public key**.
+
+## Rodando localmente
 
 ```bash
+# 1. Instale as dependências
+npm install
+
+# 2. Configure as variáveis de ambiente
+cp .env.local.example .env.local
+# edite .env.local com sua URL e anon key do Supabase
+
+# 3. Rode em desenvolvimento
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Acesse `http://localhost:3000`, crie sua conta na tela de login e comece a lançar.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Variáveis de ambiente
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variável | Descrição |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Project URL do Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon public key do Supabase |
 
-## Learn More
+## Deploy na Vercel
 
-To learn more about Next.js, take a look at the following resources:
+1. Suba o projeto para um repositório no GitHub.
+2. Em [vercel.com](https://vercel.com), clique em **Add New → Project** e importe o repositório.
+3. Em **Environment Variables**, adicione `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+4. Clique em **Deploy**. O app ficará disponível em `https://seu-projeto.vercel.app`.
+5. (Opcional) Em **Supabase → Authentication → URL Configuration**, adicione a URL da Vercel em **Site URL** / **Redirect URLs**.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Estrutura
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+  app/
+    login/                 # tela de login
+    (app)/                 # área autenticada (protegida via proxy.ts)
+      page.tsx             # Painel
+      calendario/          # Calendário mensal
+      lista/               # Lista com filtros
+      graficos/            # Gráficos (Recharts)
+      categorias/          # CRUD de categorias + meta diária
+  components/              # UI, provider de dados, modal de transação, nav
+  lib/
+    budget.ts             # cálculo do orçamento diário
+    supabase/             # clients (browser/server) e sessão
+    types.ts, utils.ts
+supabase/schema.sql       # schema + RLS + seed
+```
