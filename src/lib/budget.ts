@@ -1,3 +1,4 @@
+import type { Category } from "./types";
 import type { Transaction } from "./types";
 import { daysInMonth, parseISODate } from "./utils";
 
@@ -110,4 +111,38 @@ export interface CategoryTotal {
   name: string;
   color: string;
   total: number;
+}
+
+/** Apenas transações de saída (gastos). */
+export function getExpenseTransactions(txs: Transaction[]): Transaction[] {
+  return txs.filter((t) => t.direction === "out");
+}
+
+/** Categorias que podem aparecer no gráfico de gastos. */
+function isExpenseCategory(cat: Category | undefined): boolean {
+  if (!cat) return true; // sem categoria → despesa genérica
+  return cat.kind === "expense" || cat.kind === "both";
+}
+
+/** Agrupa gastos por categoria — só saídas em categorias de despesa. */
+export function getExpenseByCategory(
+  txs: Transaction[],
+  categories: Category[]
+): CategoryTotal[] {
+  const map = new Map<string, CategoryTotal>();
+  for (const t of getExpenseTransactions(txs)) {
+    const cat = categories.find((c) => c.id === t.category_id);
+    if (!isExpenseCategory(cat)) continue;
+    const key = cat?.id ?? "none";
+    const cur =
+      map.get(key) ?? {
+        categoryId: cat?.id ?? null,
+        name: cat?.name ?? "Sem categoria",
+        color: cat?.color ?? "#94a3b8",
+        total: 0,
+      };
+    cur.total += t.amount;
+    map.set(key, cur);
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
 }

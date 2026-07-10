@@ -102,6 +102,12 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Confirma email automaticamente (evita bloqueio sem SMTP configurado)
+  update auth.users
+  set email_confirmed_at = coalesce(email_confirmed_at, now()),
+      updated_at = now()
+  where id = new.id;
+
   insert into public.settings (user_id, daily_target, cycle_days)
   values (new.id, 50, 30)
   on conflict (user_id) do nothing;

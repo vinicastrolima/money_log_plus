@@ -17,7 +17,7 @@ import {
 import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { Card } from "@/components/ui/card";
-import { filterByMonth } from "@/lib/budget";
+import { filterByMonth, getExpenseByCategory, getExpenseTransactions } from "@/lib/budget";
 import { daysInMonth, formatCurrency, parseISODate } from "@/lib/utils";
 
 export default function ChartsPage() {
@@ -31,21 +31,15 @@ export default function ChartsPage() {
     [transactions, year, month0]
   );
 
-  // Gastos por categoria (apenas saidas)
-  const byCategory = React.useMemo(() => {
-    const map = new Map<string, { name: string; color: string; total: number }>();
-    for (const t of monthTxs) {
-      if (t.direction !== "out") continue;
-      const cat = categories.find((c) => c.id === t.category_id);
-      const key = cat?.id ?? "none";
-      const name = cat?.name ?? "Sem categoria";
-      const color = cat?.color ?? "#94a3b8";
-      const cur = map.get(key) ?? { name, color, total: 0 };
-      cur.total += t.amount;
-      map.set(key, cur);
-    }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [monthTxs, categories]);
+  const expenseTxs = React.useMemo(
+    () => getExpenseTransactions(monthTxs),
+    [monthTxs]
+  );
+
+  const byCategory = React.useMemo(
+    () => getExpenseByCategory(monthTxs, categories),
+    [monthTxs, categories]
+  );
 
   // Gastos por dia (saidas)
   const byDay = React.useMemo(() => {
@@ -63,12 +57,11 @@ export default function ChartsPage() {
     return arr;
   }, [monthTxs, year, month0]);
 
-  // Prevista x diaria (saidas)
+  // Prevista x diaria (apenas saidas)
   const prevVsDaily = React.useMemo(() => {
     let prevista = 0;
     let diaria = 0;
-    for (const t of monthTxs) {
-      if (t.direction !== "out") continue;
+    for (const t of expenseTxs) {
       if (t.type === "diaria") diaria += t.amount;
       else prevista += t.amount;
     }
@@ -76,7 +69,7 @@ export default function ChartsPage() {
       { name: "Prevista", valor: prevista, color: "#6366f1" },
       { name: "Diária", valor: diaria, color: "#f59e0b" },
     ];
-  }, [monthTxs]);
+  }, [expenseTxs]);
 
   const totalExpense = byCategory.reduce((s, c) => s + c.total, 0);
   const hasExpenses = totalExpense > 0;
@@ -112,6 +105,7 @@ export default function ChartsPage() {
             {/* Pizza por categoria */}
             <Card>
               <h3 className="mb-3 font-semibold">Gastos por categoria</h3>
+              <p className="mb-2 text-xs text-muted">Apenas saídas (despesas)</p>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
