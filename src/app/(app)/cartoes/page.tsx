@@ -60,7 +60,7 @@ export default function CartoesPage() {
       const cardPurch = cardPurchases.filter((p) => p.credit_card_id === card.id);
       return {
         card,
-        openTotal: cardOpenTotal(cardPurch, card, new Date(), cardSubs),
+        openTotal: cardOpenTotal(cardPurch, card, new Date()),
         purchaseCount: cardPurch.length,
         gradientIndex: i,
       };

@@ -183,17 +183,19 @@ export function aggregateByDueDate(
   return Array.from(map.values()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-/** Total em aberto (compras + assinaturas ativas). */
+/** Total em aberto: parcelas de compras ainda não vencidas (sem assinaturas). */
 export function cardOpenTotal(
   purchases: CardPurchase[],
   card: CreditCard,
-  today: Date = new Date(),
-  subscriptions: CardSubscription[] = []
+  today: Date = new Date()
 ): number {
   const todayStr = toISODate(today);
   let total = 0;
-  for (const line of allInstallmentLines(purchases, subscriptions, card)) {
-    if (line.dueDate >= todayStr) total += line.amount;
+  for (const purchase of purchases) {
+    if (purchase.credit_card_id !== card.id) continue;
+    for (const line of installmentsForPurchaseWithCard(purchase, card)) {
+      if (line.dueDate >= todayStr) total += line.amount;
+    }
   }
   return total;
 }
@@ -387,12 +389,11 @@ export function paymentsByMonthRange(
   return points;
 }
 
-/** Total em aberto de todos os cartões. */
+/** Total em aberto de todos os cartões (somente parcelas de compras). */
 export function allCardsOpenTotal(
   purchases: CardPurchase[],
   cards: CreditCard[],
-  today: Date = new Date(),
-  subscriptions: CardSubscription[] = []
+  today: Date = new Date()
 ): number {
   return cards.reduce(
     (sum, card) =>
@@ -400,8 +401,7 @@ export function allCardsOpenTotal(
       cardOpenTotal(
         purchases.filter((p) => p.credit_card_id === card.id),
         card,
-        today,
-        subscriptions.filter((s) => s.credit_card_id === card.id)
+        today
       ),
     0
   );

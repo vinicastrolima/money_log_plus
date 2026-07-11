@@ -149,7 +149,7 @@ function CardDetailModalContent({
     setSubscriptionActive(true);
   }, [defaultSubscriptionCategoryId]);
 
-  const openTotal = cardOpenTotal(purchases, card, new Date(), subscriptions);
+  const openTotal = cardOpenTotal(purchases, card, new Date());
   const aggs = aggregateByDueDate(purchases, card, subscriptions);
   const nextPayment = aggs.find((payment) => payment.dueDate >= toISODate(new Date()));
 
