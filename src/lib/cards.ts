@@ -1,5 +1,5 @@
-import type { CardPurchase, CreditCard } from "./types";
-import { parseISODate, toISODate } from "./utils";
+import type { CardPurchase, Category, CreditCard } from "./types";
+import { MONTH_NAMES_PT, parseISODate, toISODate } from "./utils";
 
 export interface InstallmentLine {
   dueDate: string;
@@ -103,4 +103,143 @@ export function cardOpenTotal(
     }
   }
   return total;
+}
+
+export const CARD_GRADIENTS: [string, string][] = [
+  ["#7c3aed", "#4c1d95"],
+  ["#f97316", "#c2410c"],
+  ["#0ea5e9", "#0369a1"],
+  ["#16a34a", "#14532d"],
+  ["#ec4899", "#9d174d"],
+  ["#6366f1", "#3730a3"],
+  ["#14b8a6", "#0f766e"],
+  ["#e11d48", "#881337"],
+];
+
+export const ALL_CARDS_GRADIENT: [string, string] = ["#1e293b", "#0f172a"];
+
+export function cardGradient(index: number): [string, string] {
+  return CARD_GRADIENTS[index % CARD_GRADIENTS.length];
+}
+
+export interface CategorySpend {
+  id: string;
+  name: string;
+  color: string;
+  total: number;
+}
+
+/** Gastos por categoria com base nas parcelas que vencem no mês. */
+export function spendingByCategoryInMonth(
+  purchases: CardPurchase[],
+  cards: CreditCard[],
+  categories: Category[],
+  year: number,
+  month0: number,
+  filterCardId?: string | null
+): CategorySpend[] {
+  const cardMap = new Map(cards.map((c) => [c.id, c]));
+  const catById = new Map(categories.map((c) => [c.id, c]));
+  const totals = new Map<string, number>();
+
+  for (const p of purchases) {
+    if (filterCardId && p.credit_card_id !== filterCardId) continue;
+    const card = cardMap.get(p.credit_card_id);
+    if (!card) continue;
+    for (const line of installmentsForPurchaseWithCard(p, card)) {
+      const d = parseISODate(line.dueDate);
+      if (d.getFullYear() !== year || d.getMonth() !== month0) continue;
+      const key = p.category_id ?? "none";
+      totals.set(key, (totals.get(key) ?? 0) + line.amount);
+    }
+  }
+
+  const result: CategorySpend[] = [];
+  for (const [id, total] of totals) {
+    if (total <= 0) continue;
+    const cat = id === "none" ? null : catById.get(id);
+    result.push({
+      id,
+      name: cat?.name ?? "Sem categoria",
+      color: cat?.color ?? "#94a3b8",
+      total: Math.round(total * 100) / 100,
+    });
+  }
+  return result.sort((a, b) => b.total - a.total);
+}
+
+export interface MonthlyPaymentPoint {
+  key: string;
+  label: string;
+  total: number;
+  byCard: { cardId: string; name: string; color: string; amount: number }[];
+}
+
+/** Fatura por mês a partir de um mês de referência. */
+export function paymentsByMonthRange(
+  purchases: CardPurchase[],
+  cards: CreditCard[],
+  startYear: number,
+  startMonth0: number,
+  monthCount: number,
+  filterCardId?: string | null
+): MonthlyPaymentPoint[] {
+  const cardMap = new Map(cards.map((c) => [c.id, c]));
+  const points: MonthlyPaymentPoint[] = [];
+
+  for (let i = 0; i < monthCount; i++) {
+    const d = new Date(startYear, startMonth0 + i, 1);
+    const year = d.getFullYear();
+    const month0 = d.getMonth();
+    const key = `${year}-${String(month0 + 1).padStart(2, "0")}`;
+    const byCard = new Map<string, number>();
+
+    for (const p of purchases) {
+      if (filterCardId && p.credit_card_id !== filterCardId) continue;
+      const card = cardMap.get(p.credit_card_id);
+      if (!card) continue;
+      for (const line of installmentsForPurchaseWithCard(p, card)) {
+        const ld = parseISODate(line.dueDate);
+        if (ld.getFullYear() === year && ld.getMonth() === month0) {
+          byCard.set(card.id, (byCard.get(card.id) ?? 0) + line.amount);
+        }
+      }
+    }
+
+    const byCardArr = Array.from(byCard.entries()).map(([cardId, amount]) => {
+      const card = cardMap.get(cardId)!;
+      const [c1] = cardGradient(cards.findIndex((c) => c.id === cardId));
+      return {
+        cardId,
+        name: card.name,
+        color: c1,
+        amount: Math.round(amount * 100) / 100,
+      };
+    });
+
+    points.push({
+      key,
+      label: `${MONTH_NAMES_PT[month0].slice(0, 3)}`,
+      total: Math.round(byCardArr.reduce((s, c) => s + c.amount, 0) * 100) / 100,
+      byCard: byCardArr,
+    });
+  }
+  return points;
+}
+
+/** Total em aberto de todos os cartões. */
+export function allCardsOpenTotal(
+  purchases: CardPurchase[],
+  cards: CreditCard[],
+  today: Date = new Date()
+): number {
+  return cards.reduce(
+    (sum, card) =>
+      sum + cardOpenTotal(
+        purchases.filter((p) => p.credit_card_id === card.id),
+        card,
+        today
+      ),
+    0
+  );
 }

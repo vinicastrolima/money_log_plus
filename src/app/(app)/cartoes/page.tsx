@@ -1,26 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2, CreditCard as CreditCardIcon, ShoppingBag } from "lucide-react";
+import { Plus, CreditCard as CreditCardIcon } from "lucide-react";
 import { useData } from "@/components/data-provider";
+import { WalletCarousel, type WalletSlide } from "@/components/cards/wallet-carousel";
+import { CardChartsPanel } from "@/components/cards/card-charts-panel";
+import { CardDetailModal } from "@/components/cards/card-detail-modal";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import {
-  aggregateByDueDate,
-  cardOpenTotal,
-  splitInstallments,
-} from "@/lib/cards";
-import { formatCurrency, formatDateBR, toISODate } from "@/lib/utils";
-import type { CardPurchase, CreditCard } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { allCardsOpenTotal, cardOpenTotal } from "@/lib/cards";
 
 export default function CartoesPage() {
   const {
     loading,
     creditCards,
     cardPurchases,
+    categories,
     addCreditCard,
     updateCreditCard,
     deleteCreditCard,
@@ -29,141 +26,64 @@ export default function CartoesPage() {
     deleteCardPurchase,
   } = useData();
 
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [cardModalOpen, setCardModalOpen] = React.useState(false);
-  const [purchaseModalOpen, setPurchaseModalOpen] = React.useState(false);
-  const [editingCard, setEditingCard] = React.useState<CreditCard | null>(null);
-  const [editingPurchase, setEditingPurchase] = React.useState<CardPurchase | null>(null);
+  const now = new Date();
+  const [year, setYear] = React.useState(now.getFullYear());
+  const [month0, setMonth0] = React.useState(now.getMonth());
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [detailCardId, setDetailCardId] = React.useState<string | null>(null);
+  const [newCardOpen, setNewCardOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   const [cardName, setCardName] = React.useState("");
   const [dueDay, setDueDay] = React.useState("10");
 
-  const [purchaseDesc, setPurchaseDesc] = React.useState("");
-  const [purchaseAmount, setPurchaseAmount] = React.useState("");
-  const [purchaseDate, setPurchaseDate] = React.useState(toISODate(new Date()));
-  const [paymentType, setPaymentType] = React.useState<"avista" | "parcelado">("avista");
-  const [installments, setInstallments] = React.useState("2");
+  const slides = React.useMemo((): WalletSlide[] => {
+    const allSlide: WalletSlide = {
+      type: "all",
+      openTotal: allCardsOpenTotal(cardPurchases, creditCards),
+      cardCount: creditCards.length,
+    };
+    const cardSlides: WalletSlide[] = creditCards.map((card, i) => ({
+      type: "card",
+      card,
+      openTotal: cardOpenTotal(
+        cardPurchases.filter((p) => p.credit_card_id === card.id),
+        card
+      ),
+      purchaseCount: cardPurchases.filter((p) => p.credit_card_id === card.id).length,
+      gradientIndex: i,
+    }));
+    return [allSlide, ...cardSlides];
+  }, [creditCards, cardPurchases]);
 
-  React.useEffect(() => {
-    if (creditCards.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !creditCards.some((c) => c.id === selectedId)) {
-      setSelectedId(creditCards[0].id);
-    }
-  }, [creditCards, selectedId]);
+  const activeSlide = slides[activeIndex];
+  const filterCardId =
+    activeSlide?.type === "card" ? activeSlide.card.id : null;
+  const filterLabel =
+    activeSlide?.type === "card" ? activeSlide.card.name : "Todos os cartões";
 
-  const selectedCard = creditCards.find((c) => c.id === selectedId) ?? null;
-  const selectedPurchases = React.useMemo(
-    () =>
-      selectedCard
-        ? cardPurchases.filter((p) => p.credit_card_id === selectedCard.id)
-        : [],
-    [cardPurchases, selectedCard]
-  );
+  const detailCard = detailCardId
+    ? creditCards.find((c) => c.id === detailCardId) ?? null
+    : null;
+  const detailGradientIndex = detailCard
+    ? creditCards.findIndex((c) => c.id === detailCard.id)
+    : 0;
 
-  const selectedAggs = React.useMemo(
-    () => (selectedCard ? aggregateByDueDate(selectedPurchases, selectedCard) : []),
-    [selectedCard, selectedPurchases]
-  );
-
-  const nextPayment = selectedAggs.find((a) => a.dueDate >= toISODate(new Date()));
-
-  function openNewCard() {
-    setEditingCard(null);
-    setCardName("");
-    setDueDay("10");
-    setCardModalOpen(true);
+  function handleCardClick(slide: WalletSlide, index: number) {
+    setActiveIndex(index);
+    if (slide.type === "card") setDetailCardId(slide.card.id);
   }
 
-  function openEditCard(card: CreditCard) {
-    setEditingCard(card);
-    setCardName(card.name);
-    setDueDay(String(card.due_day));
-    setCardModalOpen(true);
-  }
-
-  function openNewPurchase() {
-    if (!selectedCard) return;
-    setEditingPurchase(null);
-    setPurchaseDesc("");
-    setPurchaseAmount("");
-    setPurchaseDate(toISODate(new Date()));
-    setPaymentType("avista");
-    setInstallments("2");
-    setPurchaseModalOpen(true);
-  }
-
-  function openEditPurchase(p: CardPurchase) {
-    setEditingPurchase(p);
-    setPurchaseDesc(p.description);
-    setPurchaseAmount(String(p.total_amount).replace(".", ","));
-    setPurchaseDate(p.purchase_date);
-    setPaymentType(p.installments > 1 ? "parcelado" : "avista");
-    setInstallments(String(p.installments > 1 ? p.installments : 2));
-    setPurchaseModalOpen(true);
-  }
-
-  async function handleSaveCard(e: React.FormEvent) {
+  async function handleCreateCard(e: React.FormEvent) {
     e.preventDefault();
     const day = Number(dueDay);
-    if (!cardName.trim()) return;
-    if (!Number.isInteger(day) || day < 1 || day > 31) return;
+    if (!cardName.trim() || !Number.isInteger(day) || day < 1 || day > 31) return;
     setSaving(true);
     try {
-      const input = { name: cardName.trim(), due_day: day };
-      if (editingCard) await updateCreditCard(editingCard.id, input);
-      else await addCreditCard(input);
-      setCardModalOpen(false);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeleteCard(card: CreditCard) {
-    if (!confirm(`Excluir o cartão "${card.name}" e todas as compras vinculadas?`)) return;
-    setSaving(true);
-    try {
-      await deleteCreditCard(card.id);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSavePurchase(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedCard) return;
-    const parsed = Number(purchaseAmount.replace(/\./g, "").replace(",", "."));
-    const inst = paymentType === "avista" ? 1 : Number(installments);
-    if (!purchaseDesc.trim()) return;
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
-    if (paymentType === "parcelado" && (!Number.isInteger(inst) || inst < 2 || inst > 48))
-      return;
-
-    setSaving(true);
-    try {
-      const input = {
-        credit_card_id: editingPurchase?.credit_card_id ?? selectedCard.id,
-        description: purchaseDesc.trim(),
-        total_amount: parsed,
-        installments: inst,
-        purchase_date: purchaseDate,
-      };
-      if (editingPurchase) await updateCardPurchase(editingPurchase.id, input);
-      else await addCardPurchase(input);
-      setPurchaseModalOpen(false);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeletePurchase(p: CardPurchase) {
-    if (!confirm(`Excluir a compra "${p.description}"?`)) return;
-    setSaving(true);
-    try {
-      await deleteCardPurchase(p.id);
+      await addCreditCard({ name: cardName.trim(), due_day: day });
+      setNewCardOpen(false);
+      setCardName("");
+      setDueDay("10");
     } finally {
       setSaving(false);
     }
@@ -174,194 +94,103 @@ export default function CartoesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Cartões</h1>
           <p className="text-sm text-muted">
-            Cadastre cartões, adicione compras e o calendário é atualizado automaticamente no dia do
-            pagamento.
+            Deslize entre os cartões · Toque para configurar · Gráficos atualizam ao arrastar
           </p>
         </div>
-        <Button onClick={openNewCard}>
+        <Button onClick={() => setNewCardOpen(true)}>
           <Plus size={16} />
           Novo cartão
         </Button>
       </div>
 
       {creditCards.length === 0 ? (
-        <Card className="flex flex-col items-center gap-3 p-10 text-center">
-          <CreditCardIcon size={40} className="text-muted" />
-          <p className="text-sm text-muted">
-            Nenhum cartão cadastrado. Crie um cartão com nome e dia de pagamento.
-          </p>
-          <Button onClick={openNewCard}>Criar primeiro cartão</Button>
+        <Card className="flex flex-col items-center gap-4 p-12 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
+            <CreditCardIcon size={32} className="text-muted" />
+          </div>
+          <div>
+            <p className="font-medium">Sua carteira está vazia</p>
+            <p className="mt-1 text-sm text-muted">
+              Adicione um cartão para começar a registrar compras e ver as faturas no calendário.
+            </p>
+          </div>
+          <Button onClick={() => setNewCardOpen(true)}>Criar primeiro cartão</Button>
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          <div className="space-y-2">
-            {creditCards.map((card) => {
-              const purchases = cardPurchases.filter((p) => p.credit_card_id === card.id);
-              const open = cardOpenTotal(purchases, card);
-              const active = card.id === selectedId;
-              return (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => setSelectedId(card.id)}
-                  className={cn(
-                    "w-full rounded-xl border p-4 text-left transition-colors cursor-pointer",
-                    active
-                      ? "border-primary bg-primary/5"
-                      : "border-border bg-card hover:bg-slate-50"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold">{card.name}</p>
-                      <p className="text-xs text-muted">Pagamento dia {card.due_day}</p>
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditCard(card);
-                        }}
-                        className="rounded p-1 text-muted hover:bg-slate-100 cursor-pointer"
-                        aria-label="Editar cartão"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCard(card);
-                        }}
-                        className="rounded p-1 text-expense hover:bg-expense-bg cursor-pointer"
-                        aria-label="Excluir cartão"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm">
-                    <span className="text-muted">Em aberto: </span>
-                    <span className="font-medium text-expense">{formatCurrency(open)}</span>
-                  </p>
-                  <p className="text-xs text-muted">{purchases.length} compra(s)</p>
-                </button>
-              );
-            })}
-          </div>
+        <>
+          <WalletCarousel
+            slides={slides}
+            activeIndex={activeIndex}
+            onActiveIndexChange={setActiveIndex}
+            onCardClick={handleCardClick}
+          />
 
-          {selectedCard && (
-            <div className="space-y-4">
-              <Card className="p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">{selectedCard.name}</h2>
-                    <p className="text-sm text-muted">
-                      Pagamento todo dia {selectedCard.due_day} ·{" "}
-                      {nextPayment
-                        ? `Próximo: ${formatDateBR(nextPayment.dueDate)} (${formatCurrency(nextPayment.total)})`
-                        : "Sem parcelas futuras"}
-                    </p>
-                  </div>
-                  <Button onClick={openNewPurchase}>
-                    <ShoppingBag size={16} />
-                    Nova compra
-                  </Button>
-                </div>
-              </Card>
+          <p className="-mt-4 text-center text-xs text-muted">
+            Toque no cartão para configurar e adicionar compras
+          </p>
 
-              {selectedPurchases.length === 0 ? (
-                <Card className="p-8 text-center text-sm text-muted">
-                  Nenhuma compra neste cartão. Adicione uma compra à vista ou parcelada.
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {selectedPurchases.map((p) => {
-                    const perInstallment =
-                      p.installments > 1
-                        ? splitInstallments(p.total_amount, p.installments)[0]
-                        : p.total_amount;
-                    return (
-                      <Card key={p.id} className="flex items-center justify-between gap-3 p-4">
-                        <div>
-                          <p className="font-medium">{p.description}</p>
-                          <p className="text-sm text-muted">
-                            Compra em {formatDateBR(p.purchase_date)} ·{" "}
-                            {p.installments === 1
-                              ? "À vista"
-                              : `${p.installments}x de ${formatCurrency(perInstallment)}`}
-                          </p>
-                          <p className="text-sm font-medium text-expense">
-                            Total {formatCurrency(p.total_amount)}
-                          </p>
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openEditPurchase(p)}
-                            className="rounded p-2 text-muted hover:bg-slate-100 cursor-pointer"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeletePurchase(p)}
-                            className="rounded p-2 text-expense hover:bg-expense-bg cursor-pointer"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
+          <CardChartsPanel
+            creditCards={creditCards}
+            cardPurchases={cardPurchases}
+            categories={categories}
+            filterCardId={filterCardId}
+            filterLabel={filterLabel}
+            year={year}
+            month0={month0}
+            onMonthChange={(y, m) => {
+              setYear(y);
+              setMonth0(m);
+            }}
+          />
+        </>
+      )}
 
-              {selectedAggs.length > 0 && (
-                <Card className="p-4">
-                  <h3 className="mb-3 text-sm font-semibold">Lançamentos no calendário</h3>
-                  <div className="space-y-2">
-                    {selectedAggs.map((agg) => (
-                      <div
-                        key={agg.dueDate}
-                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                      >
-                        <span>
-                          {formatDateBR(agg.dueDate)} · {selectedCard.name}
-                        </span>
-                        <span className="font-medium text-expense">
-                          {formatCurrency(agg.total)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-xs text-muted">
-                    Esses valores aparecem automaticamente no calendário com categoria Cartão. Para
-                    marcar como pago, edite o status na lista ou no calendário.
-                  </p>
-                </Card>
-              )}
-            </div>
-          )}
-        </div>
+      {detailCard && (
+        <CardDetailModal
+          open={Boolean(detailCardId)}
+          onClose={() => setDetailCardId(null)}
+          card={detailCard}
+          gradientIndex={detailGradientIndex}
+          purchases={cardPurchases.filter((p) => p.credit_card_id === detailCard.id)}
+          categories={categories}
+          onSaveCard={async (input) => {
+            await updateCreditCard(detailCard.id, input);
+          }}
+          onDeleteCard={async () => {
+            await deleteCreditCard(detailCard.id);
+            setDetailCardId(null);
+          }}
+          onSavePurchase={async (input) => {
+            const payload = {
+              credit_card_id: detailCard.id,
+              description: input.description,
+              total_amount: input.total_amount,
+              installments: input.installments,
+              purchase_date: input.purchase_date,
+              category_id: input.category_id,
+            };
+            if (input.id) await updateCardPurchase(input.id, payload);
+            else await addCardPurchase(payload);
+          }}
+          onDeletePurchase={deleteCardPurchase}
+        />
       )}
 
       <Modal
-        open={cardModalOpen}
-        onClose={() => setCardModalOpen(false)}
-        title={editingCard ? "Editar cartão" : "Novo cartão"}
+        open={newCardOpen}
+        onClose={() => setNewCardOpen(false)}
+        title="Novo cartão"
       >
-        <form onSubmit={handleSaveCard} className="space-y-4">
+        <form onSubmit={handleCreateCard} className="space-y-4">
           <div>
-            <Label htmlFor="card-name">Nome do cartão</Label>
+            <Label htmlFor="new-name">Nome do cartão</Label>
             <Input
-              id="card-name"
+              id="new-name"
               value={cardName}
               onChange={(e) => setCardName(e.target.value)}
               placeholder="Ex: Nubank, Itaú..."
@@ -369,9 +198,9 @@ export default function CartoesPage() {
             />
           </div>
           <div>
-            <Label htmlFor="card-due">Dia do pagamento</Label>
+            <Label htmlFor="new-due">Dia do pagamento</Label>
             <Select
-              id="card-due"
+              id="new-due"
               value={dueDay}
               onChange={(e) => setDueDay(e.target.value)}
             >
@@ -381,119 +210,18 @@ export default function CartoesPage() {
                 </option>
               ))}
             </Select>
-            <p className="mt-1 text-xs text-muted">
-              Dia do mês em que você paga a fatura deste cartão.
-            </p>
           </div>
           <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
-              onClick={() => setCardModalOpen(false)}
+              onClick={() => setNewCardOpen(false)}
               disabled={saving}
             >
               Cancelar
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Salvando..." : "Salvar"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal
-        open={purchaseModalOpen}
-        onClose={() => setPurchaseModalOpen(false)}
-        title={editingPurchase ? "Editar compra" : "Nova compra"}
-      >
-        <form onSubmit={handleSavePurchase} className="space-y-4">
-          <div>
-            <Label htmlFor="purchase-desc">Descrição</Label>
-            <Input
-              id="purchase-desc"
-              value={purchaseDesc}
-              onChange={(e) => setPurchaseDesc(e.target.value)}
-              placeholder="Ex: Notebook, Mercado..."
-              autoFocus
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="purchase-amount">Valor total (R$)</Label>
-              <Input
-                id="purchase-amount"
-                inputMode="decimal"
-                value={purchaseAmount}
-                onChange={(e) => setPurchaseAmount(e.target.value)}
-                placeholder="0,00"
-              />
-            </div>
-            <div>
-              <Label htmlFor="purchase-date">Data da compra</Label>
-              <Input
-                id="purchase-date"
-                type="date"
-                value={purchaseDate}
-                onChange={(e) => setPurchaseDate(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <Label>Forma de pagamento</Label>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setPaymentType("avista")}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-sm font-medium cursor-pointer",
-                  paymentType === "avista"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted hover:bg-slate-50"
-                )}
-              >
-                À vista
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentType("parcelado")}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-sm font-medium cursor-pointer",
-                  paymentType === "parcelado"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted hover:bg-slate-50"
-                )}
-              >
-                Parcelado
-              </button>
-            </div>
-          </div>
-          {paymentType === "parcelado" && (
-            <div>
-              <Label htmlFor="purchase-installments">Parcelas</Label>
-              <Select
-                id="purchase-installments"
-                value={installments}
-                onChange={(e) => setInstallments(e.target.value)}
-              >
-                {Array.from({ length: 47 }, (_, i) => i + 2).map((n) => (
-                  <option key={n} value={String(n)}>
-                    {n}x
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPurchaseModalOpen(false)}
-              disabled={saving}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Salvando..." : "Salvar"}
+              {saving ? "Salvando..." : "Criar cartão"}
             </Button>
           </div>
         </form>

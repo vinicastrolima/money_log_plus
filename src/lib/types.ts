@@ -42,6 +42,7 @@ export interface CardPurchase {
   total_amount: number;
   installments: number;
   purchase_date: string;
+  category_id: string | null;
   created_at: string;
 }
 
@@ -56,6 +57,7 @@ export interface CardPurchaseInput {
   total_amount: number;
   installments: number;
   purchase_date: string;
+  category_id: string | null;
 }
 
 export interface TransactionWithCategory extends Transaction {

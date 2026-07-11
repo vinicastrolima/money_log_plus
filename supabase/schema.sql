@@ -49,6 +49,7 @@ create table if not exists public.card_purchases (
   total_amount numeric(14, 2) not null check (total_amount > 0),
   installments int not null default 1 check (installments >= 1 and installments <= 48),
   purchase_date date not null,
+  category_id uuid references public.categories (id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -66,6 +67,8 @@ create index if not exists credit_cards_user_idx
   on public.credit_cards (user_id);
 create index if not exists card_purchases_card_idx
   on public.card_purchases (credit_card_id);
+create index if not exists card_purchases_category_idx
+  on public.card_purchases (category_id) where category_id is not null;
 create index if not exists transactions_credit_card_idx
   on public.transactions (credit_card_id) where credit_card_id is not null;
 
