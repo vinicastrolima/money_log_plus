@@ -63,6 +63,18 @@ create table if not exists public.card_purchases (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.card_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  credit_card_id uuid not null references public.credit_cards (id) on delete cascade,
+  description text not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  category_id uuid references public.categories (id) on delete set null,
+  start_date date not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   daily_target numeric(14, 2) not null default 50,
@@ -79,6 +91,10 @@ create index if not exists card_purchases_card_idx
   on public.card_purchases (credit_card_id);
 create index if not exists card_purchases_category_idx
   on public.card_purchases (category_id) where category_id is not null;
+create index if not exists card_subscriptions_card_idx
+  on public.card_subscriptions (credit_card_id);
+create index if not exists card_subscriptions_user_idx
+  on public.card_subscriptions (user_id);
 create index if not exists transactions_credit_card_idx
   on public.transactions (credit_card_id) where credit_card_id is not null;
 
@@ -91,6 +107,7 @@ alter table public.transactions enable row level security;
 alter table public.settings enable row level security;
 alter table public.credit_cards enable row level security;
 alter table public.card_purchases enable row level security;
+alter table public.card_subscriptions enable row level security;
 
 -- categories
 drop policy if exists "categories_select_own" on public.categories;
@@ -146,6 +163,20 @@ create policy "card_purchases_update_own" on public.card_purchases
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "card_purchases_delete_own" on public.card_purchases;
 create policy "card_purchases_delete_own" on public.card_purchases
+  for delete using (auth.uid() = user_id);
+
+-- card_subscriptions
+drop policy if exists "card_subscriptions_select_own" on public.card_subscriptions;
+create policy "card_subscriptions_select_own" on public.card_subscriptions
+  for select using (auth.uid() = user_id);
+drop policy if exists "card_subscriptions_insert_own" on public.card_subscriptions;
+create policy "card_subscriptions_insert_own" on public.card_subscriptions
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "card_subscriptions_update_own" on public.card_subscriptions;
+create policy "card_subscriptions_update_own" on public.card_subscriptions
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "card_subscriptions_delete_own" on public.card_subscriptions;
+create policy "card_subscriptions_delete_own" on public.card_subscriptions
   for delete using (auth.uid() = user_id);
 
 -- settings

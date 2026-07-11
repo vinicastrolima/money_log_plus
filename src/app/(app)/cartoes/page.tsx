@@ -22,6 +22,7 @@ export default function CartoesPage() {
     loading,
     creditCards,
     cardPurchases,
+    cardSubscriptions,
     categories,
     addCreditCard,
     updateCreditCard,
@@ -29,6 +30,9 @@ export default function CartoesPage() {
     addCardPurchase,
     updateCardPurchase,
     deleteCardPurchase,
+    addCardSubscription,
+    updateCardSubscription,
+    deleteCardSubscription,
   } = useData();
 
   const now = new Date();
@@ -51,16 +55,17 @@ export default function CartoesPage() {
       : "all";
 
   const walletCards = React.useMemo((): WalletCardData[] => {
-    return creditCards.map((card, i) => ({
-      card,
-      openTotal: cardOpenTotal(
-        cardPurchases.filter((p) => p.credit_card_id === card.id),
-        card
-      ),
-      purchaseCount: cardPurchases.filter((p) => p.credit_card_id === card.id).length,
-      gradientIndex: i,
-    }));
-  }, [creditCards, cardPurchases]);
+    return creditCards.map((card, i) => {
+      const cardSubs = cardSubscriptions.filter((s) => s.credit_card_id === card.id);
+      const cardPurch = cardPurchases.filter((p) => p.credit_card_id === card.id);
+      return {
+        card,
+        openTotal: cardOpenTotal(cardPurch, card, new Date(), cardSubs),
+        purchaseCount: cardPurch.length,
+        gradientIndex: i,
+      };
+    });
+  }, [creditCards, cardPurchases, cardSubscriptions]);
 
   const filterCardId = effectiveChartScope === "all" ? null : effectiveChartScope;
   const filterLabel =
@@ -152,6 +157,7 @@ export default function CartoesPage() {
           <CardChartsPanel
             creditCards={creditCards}
             cardPurchases={cardPurchases}
+            cardSubscriptions={cardSubscriptions}
             categories={categories}
             filterCardId={filterCardId}
             filterLabel={filterLabel}
@@ -175,6 +181,7 @@ export default function CartoesPage() {
           card={detailCard}
           gradientIndex={detailGradientIndex}
           purchases={cardPurchases.filter((p) => p.credit_card_id === detailCard.id)}
+          subscriptions={cardSubscriptions.filter((s) => s.credit_card_id === detailCard.id)}
           categories={categories}
           openPurchaseOnMount={openPurchaseOnDetail}
           onSaveCard={async (input) => {
@@ -197,6 +204,19 @@ export default function CartoesPage() {
             else await addCardPurchase(payload);
           }}
           onDeletePurchase={deleteCardPurchase}
+          onSaveSubscription={async (input) => {
+            const payload = {
+              credit_card_id: detailCard.id,
+              description: input.description,
+              amount: input.amount,
+              start_date: input.start_date,
+              category_id: input.category_id,
+              active: input.active,
+            };
+            if (input.id) await updateCardSubscription(input.id, payload);
+            else await addCardSubscription(payload);
+          }}
+          onDeleteSubscription={deleteCardSubscription}
         />
       )}
 

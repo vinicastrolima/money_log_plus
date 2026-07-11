@@ -66,6 +66,27 @@ export interface CardPurchaseInput {
   category_id: string | null;
 }
 
+export interface CardSubscription {
+  id: string;
+  user_id: string;
+  credit_card_id: string;
+  description: string;
+  amount: number;
+  category_id: string | null;
+  start_date: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface CardSubscriptionInput {
+  credit_card_id: string;
+  description: string;
+  amount: number;
+  category_id: string | null;
+  start_date: string;
+  active?: boolean;
+}
+
 export interface TransactionWithCategory extends Transaction {
   category: Category | null;
 }

@@ -18,7 +18,7 @@ import {
 } from "recharts";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { Card } from "@/components/ui/card";
-import type { CardPurchase, Category, CreditCard } from "@/lib/types";
+import type { CardPurchase, CardSubscription, Category, CreditCard } from "@/lib/types";
 import {
   ALL_CARDS_CHART_COLOR,
   cardChartColor,
@@ -31,6 +31,7 @@ import { formatCurrency, MONTH_NAMES_PT } from "@/lib/utils";
 interface Props {
   creditCards: CreditCard[];
   cardPurchases: CardPurchase[];
+  cardSubscriptions: CardSubscription[];
   categories: Category[];
   /** null = todos os cartões */
   filterCardId: string | null;
@@ -113,6 +114,7 @@ function CurrencyTooltip({
 export function CardChartsPanel({
   creditCards,
   cardPurchases,
+  cardSubscriptions,
   categories,
   filterCardId,
   filterLabel,
@@ -128,9 +130,10 @@ export function CardChartsPanel({
         categories,
         year,
         month0,
-        filterCardId
+        filterCardId,
+        cardSubscriptions
       ),
-    [cardPurchases, creditCards, categories, year, month0, filterCardId]
+    [cardPurchases, cardSubscriptions, creditCards, categories, year, month0, filterCardId]
   );
 
   const monthly = React.useMemo(
@@ -141,9 +144,10 @@ export function CardChartsPanel({
         year,
         month0,
         6,
-        filterCardId
+        filterCardId,
+        cardSubscriptions
       ),
-    [cardPurchases, creditCards, year, month0, filterCardId]
+    [cardPurchases, cardSubscriptions, creditCards, year, month0, filterCardId]
   );
 
   const monthStats = React.useMemo(
@@ -153,9 +157,10 @@ export function CardChartsPanel({
         creditCards,
         year,
         month0,
-        filterCardId
+        filterCardId,
+        cardSubscriptions
       ),
-    [cardPurchases, creditCards, year, month0, filterCardId]
+    [cardPurchases, cardSubscriptions, creditCards, year, month0, filterCardId]
   );
 
   const series = React.useMemo(

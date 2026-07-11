@@ -1,25 +1,30 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aggregateByDueDate } from "./cards";
-import type { CardPurchase, CreditCard } from "./types";
+import type { CardPurchase, CardSubscription, CreditCard } from "./types";
 import { toISODate } from "./utils";
 
 export async function syncCreditCardTransactions(
   supabase: SupabaseClient,
   card: CreditCard,
   purchases: CardPurchase[],
+  subscriptions: CardSubscription[],
   cartaoCategoryId: string,
   userId: string
 ) {
+  const today = toISODate(new Date());
+
   await supabase
     .from("transactions")
     .delete()
     .eq("credit_card_id", card.id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .gte("date", today);
 
-  const aggs = aggregateByDueDate(purchases, card);
+  const aggs = aggregateByDueDate(purchases, card, subscriptions).filter(
+    (agg) => agg.dueDate >= today
+  );
   if (aggs.length === 0) return;
 
-  const today = toISODate(new Date());
   const rows = aggs.map((agg) => ({
     user_id: userId,
     date: agg.dueDate,
@@ -34,24 +39,4 @@ export async function syncCreditCardTransactions(
 
   const { error } = await supabase.from("transactions").insert(rows);
   if (error) throw error;
-}
-
-export async function syncAllCreditCards(
-  supabase: SupabaseClient,
-  userId: string,
-  cards: CreditCard[],
-  purchases: CardPurchase[],
-  cartaoCategoryId: string | null
-) {
-  if (!cartaoCategoryId) return;
-  for (const card of cards) {
-    const cardPurchases = purchases.filter((p) => p.credit_card_id === card.id);
-    await syncCreditCardTransactions(
-      supabase,
-      card,
-      cardPurchases,
-      cartaoCategoryId,
-      userId
-    );
-  }
 }

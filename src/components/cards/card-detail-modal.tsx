@@ -6,6 +6,7 @@ import {
   Pencil,
   Plus,
   ReceiptText,
+  Repeat2,
   ShoppingBag,
   Trash2,
 } from "lucide-react";
@@ -21,7 +22,7 @@ import {
   splitInstallments,
 } from "@/lib/cards";
 import { cn, formatCurrency, formatDateBR, toISODate } from "@/lib/utils";
-import type { CardPurchase, Category, CreditCard } from "@/lib/types";
+import type { CardPurchase, CardSubscription, Category, CreditCard } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -29,6 +30,7 @@ interface Props {
   card: CreditCard;
   gradientIndex: number;
   purchases: CardPurchase[];
+  subscriptions: CardSubscription[];
   categories: Category[];
   openPurchaseOnMount?: boolean;
   onSaveCard: (input: {
@@ -48,6 +50,15 @@ interface Props {
     category_id: string | null;
   }) => Promise<void>;
   onDeletePurchase: (id: string) => Promise<void>;
+  onSaveSubscription: (input: {
+    id?: string;
+    description: string;
+    amount: number;
+    start_date: string;
+    category_id: string | null;
+    active: boolean;
+  }) => Promise<void>;
+  onDeleteSubscription: (id: string) => Promise<void>;
 }
 
 export function CardDetailModal(props: Props) {
@@ -68,12 +79,15 @@ function CardDetailModalContent({
   card,
   gradientIndex,
   purchases,
+  subscriptions,
   categories,
   openPurchaseOnMount,
   onSaveCard,
   onDeleteCard,
   onSavePurchase,
   onDeletePurchase,
+  onSaveSubscription,
+  onDeleteSubscription,
 }: Props) {
   const [editingSettings, setEditingSettings] = React.useState(false);
   const [cardName, setCardName] = React.useState(card.name);
@@ -96,10 +110,25 @@ function CardDetailModalContent({
   const [paymentType, setPaymentType] = React.useState<"avista" | "parcelado">("avista");
   const [installments, setInstallments] = React.useState("2");
 
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = React.useState(false);
+  const [editingSubscription, setEditingSubscription] = React.useState<CardSubscription | null>(null);
+  const [subscriptionDesc, setSubscriptionDesc] = React.useState("");
+  const [subscriptionAmount, setSubscriptionAmount] = React.useState("");
+  const [subscriptionDate, setSubscriptionDate] = React.useState(toISODate(new Date()));
+  const [subscriptionCategoryId, setSubscriptionCategoryId] = React.useState("");
+  const [subscriptionActive, setSubscriptionActive] = React.useState(true);
+
   const expenseCategories = React.useMemo(
     () => categories.filter((category) => category.kind === "expense" || category.kind === "both"),
     [categories]
   );
+
+  const defaultSubscriptionCategoryId = React.useMemo(() => {
+    const match = categories.find((category) =>
+      category.name.toLowerCase().includes("assinatur")
+    );
+    return match?.id ?? "";
+  }, [categories]);
 
   const resetPurchaseForm = React.useCallback(() => {
     setEditingPurchase(null);
@@ -111,13 +140,37 @@ function CardDetailModalContent({
     setInstallments("2");
   }, []);
 
-  const openTotal = cardOpenTotal(purchases, card);
-  const aggs = aggregateByDueDate(purchases, card);
+  const resetSubscriptionForm = React.useCallback(() => {
+    setEditingSubscription(null);
+    setSubscriptionDesc("");
+    setSubscriptionAmount("");
+    setSubscriptionDate(toISODate(new Date()));
+    setSubscriptionCategoryId(defaultSubscriptionCategoryId);
+    setSubscriptionActive(true);
+  }, [defaultSubscriptionCategoryId]);
+
+  const openTotal = cardOpenTotal(purchases, card, new Date(), subscriptions);
+  const aggs = aggregateByDueDate(purchases, card, subscriptions);
   const nextPayment = aggs.find((payment) => payment.dueDate >= toISODate(new Date()));
 
   function openNewPurchase() {
     resetPurchaseForm();
     setPurchaseModalOpen(true);
+  }
+
+  function openNewSubscription() {
+    resetSubscriptionForm();
+    setSubscriptionModalOpen(true);
+  }
+
+  function openEditSubscription(subscription: CardSubscription) {
+    setEditingSubscription(subscription);
+    setSubscriptionDesc(subscription.description);
+    setSubscriptionAmount(String(subscription.amount).replace(".", ","));
+    setSubscriptionDate(subscription.start_date);
+    setSubscriptionCategoryId(subscription.category_id ?? defaultSubscriptionCategoryId);
+    setSubscriptionActive(subscription.active);
+    setSubscriptionModalOpen(true);
   }
 
   function openEditPurchase(purchase: CardPurchase) {
@@ -186,6 +239,53 @@ function CardDetailModalContent({
     setSaving(true);
     try {
       await onDeletePurchase(purchase.id);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveSubscription(event: React.FormEvent) {
+    event.preventDefault();
+    const parsed = Number(subscriptionAmount.replace(/\./g, "").replace(",", "."));
+    if (!subscriptionDesc.trim() || !Number.isFinite(parsed) || parsed <= 0) return;
+
+    setSaving(true);
+    try {
+      await onSaveSubscription({
+        id: editingSubscription?.id,
+        description: subscriptionDesc.trim(),
+        amount: parsed,
+        start_date: subscriptionDate,
+        category_id: subscriptionCategoryId || null,
+        active: subscriptionActive,
+      });
+      setSubscriptionModalOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteSubscription(subscription: CardSubscription) {
+    if (!confirm(`Excluir a assinatura "${subscription.description}"?`)) return;
+    setSaving(true);
+    try {
+      await onDeleteSubscription(subscription.id);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleSubscription(subscription: CardSubscription) {
+    setSaving(true);
+    try {
+      await onSaveSubscription({
+        id: subscription.id,
+        description: subscription.description,
+        amount: subscription.amount,
+        start_date: subscription.start_date,
+        category_id: subscription.category_id,
+        active: !subscription.active,
+      });
     } finally {
       setSaving(false);
     }
@@ -456,6 +556,129 @@ function CardDetailModalContent({
             )}
           </section>
 
+          <section aria-labelledby="card-subscriptions-title">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 id="card-subscriptions-title" className="text-sm font-semibold">
+                  Assinaturas recorrentes
+                </h3>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-muted">
+                  {subscriptions.length}
+                </span>
+              </div>
+              {subscriptions.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 shrink-0 px-2 text-primary hover:bg-primary/10 hover:text-primary"
+                  onClick={openNewSubscription}
+                >
+                  <Plus size={15} aria-hidden="true" />
+                  Adicionar
+                </Button>
+              )}
+            </div>
+
+            {subscriptions.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border px-5 py-8 text-center">
+                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-muted">
+                  <Repeat2 size={20} aria-hidden="true" />
+                </span>
+                <p className="mt-3 text-sm font-medium">Nenhuma assinatura neste cartão</p>
+                <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-muted">
+                  Cadastre serviços como ChatGPT, streaming ou planos mensais que repetem na fatura.
+                </p>
+                <Button className="mt-4 min-h-11" onClick={openNewSubscription}>
+                  <Plus size={16} aria-hidden="true" />
+                  Adicionar assinatura
+                </Button>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border sm:max-h-72 sm:overflow-y-auto">
+                {subscriptions.map((subscription) => {
+                  const category = categories.find((item) => item.id === subscription.category_id);
+
+                  return (
+                    <li
+                      key={subscription.id}
+                      className={cn(
+                        "p-3.5 sm:p-4",
+                        !subscription.active && "bg-slate-50/80"
+                      )}
+                    >
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-semibold">{subscription.description}</p>
+                            {!subscription.active && (
+                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                                Pausada
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+                            <span>Mensal · desde {formatDateBR(subscription.start_date)}</span>
+                            {category && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="inline-flex min-w-0 items-center gap-1.5">
+                                  <span
+                                    className="h-2 w-2 shrink-0 rounded-full"
+                                    style={{ background: category.color }}
+                                    aria-hidden="true"
+                                  />
+                                  <span className="max-w-32 truncate">{category.name}</span>
+                                </span>
+                              </>
+                            )}
+                          </p>
+                          <p className="mt-1.5 text-sm font-semibold text-expense">
+                            {formatCurrency(subscription.amount)}
+                            <span className="ml-1 text-xs font-normal text-muted">/ mês</span>
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 text-muted"
+                            onClick={() => openEditSubscription(subscription)}
+                            disabled={saving}
+                            aria-label={`Editar ${subscription.description}`}
+                          >
+                            <Pencil size={16} aria-hidden="true" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-11 px-2 text-xs text-muted"
+                            onClick={() => void handleToggleSubscription(subscription)}
+                            disabled={saving}
+                          >
+                            {subscription.active ? "Pausar" : "Ativar"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 text-expense hover:bg-expense-bg hover:text-expense"
+                            onClick={() => void handleDeleteSubscription(subscription)}
+                            disabled={saving}
+                            aria-label={`Excluir ${subscription.description}`}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
           <div className="border-t border-border pt-4">
             <Button
               type="button"
@@ -587,6 +810,105 @@ function CardDetailModalContent({
             </Button>
             <Button type="submit" className="min-h-11" disabled={saving}>
               {saving ? "Salvando..." : editingPurchase ? "Salvar compra" : "Adicionar"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={subscriptionModalOpen}
+        onClose={() => setSubscriptionModalOpen(false)}
+        title={editingSubscription ? "Editar assinatura" : "Nova assinatura"}
+        className="max-w-xl p-4 sm:p-6"
+      >
+        <form onSubmit={handleSaveSubscription} className="space-y-4">
+          <p className="text-xs leading-relaxed text-muted">
+            A cobrança se repete todo mês na fatura, com o mesmo valor, a partir da data de início.
+          </p>
+          <div>
+            <Label htmlFor="s-desc">Serviço</Label>
+            <Input
+              id="s-desc"
+              className="h-11"
+              value={subscriptionDesc}
+              onChange={(event) => setSubscriptionDesc(event.target.value)}
+              placeholder="Ex: ChatGPT, HBO Max..."
+              disabled={saving}
+              autoFocus
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="s-cat">Categoria</Label>
+            <Select
+              id="s-cat"
+              className="h-11"
+              value={subscriptionCategoryId}
+              onChange={(event) => setSubscriptionCategoryId(event.target.value)}
+              disabled={saving}
+            >
+              <option value="">Sem categoria</option>
+              {expenseCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="s-amount">Valor mensal (R$)</Label>
+              <Input
+                id="s-amount"
+                className="h-11"
+                inputMode="decimal"
+                value={subscriptionAmount}
+                onChange={(event) => setSubscriptionAmount(event.target.value)}
+                placeholder="0,00"
+                disabled={saving}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="s-date">Primeira cobrança</Label>
+              <Input
+                id="s-date"
+                className="h-11"
+                type="date"
+                value={subscriptionDate}
+                onChange={(event) => setSubscriptionDate(event.target.value)}
+                disabled={saving}
+                required
+              />
+            </div>
+          </div>
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border px-3.5 py-2.5">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              checked={subscriptionActive}
+              onChange={(event) => setSubscriptionActive(event.target.checked)}
+              disabled={saving}
+            />
+            <span className="text-sm">
+              Assinatura ativa
+              <span className="mt-0.5 block text-xs text-muted">
+                Desmarque para pausar sem excluir o histórico.
+              </span>
+            </span>
+          </label>
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              onClick={() => setSubscriptionModalOpen(false)}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" className="min-h-11" disabled={saving}>
+              {saving ? "Salvando..." : editingSubscription ? "Salvar assinatura" : "Adicionar"}
             </Button>
           </div>
         </form>

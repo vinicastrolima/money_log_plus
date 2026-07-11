@@ -1,4 +1,4 @@
-import type { CardPurchase, Category, CreditCard } from "./types";
+import type { CardPurchase, CardSubscription, Category, CreditCard } from "./types";
 import { MONTH_NAMES_PT, parseISODate, toISODate } from "./utils";
 
 export interface InstallmentLine {
@@ -8,7 +8,12 @@ export interface InstallmentLine {
   installmentNumber: number;
   installmentsTotal: number;
   purchaseDescription: string;
+  categoryId?: string | null;
+  isSubscription?: boolean;
 }
+
+/** Meses futuros gerados para assinaturas recorrentes. */
+export const SUBSCRIPTION_HORIZON_MONTHS = 36;
 
 /** Dia de vencimento válido no mês (ajusta 31 → último dia do mês). */
 export function dueDateInMonth(year: number, month0: number, dueDay: number): Date {
@@ -96,8 +101,60 @@ export function installmentsForPurchaseWithCard(
       installmentNumber: i + 1,
       installmentsTotal: purchase.installments,
       purchaseDescription: purchase.description,
+      categoryId: purchase.category_id,
+      isSubscription: false,
     };
   });
+}
+
+/** Gera cobranças mensais de uma assinatura recorrente. */
+export function installmentsForSubscription(
+  subscription: CardSubscription,
+  card: CreditCard,
+  horizonMonths = SUBSCRIPTION_HORIZON_MONTHS
+): InstallmentLine[] {
+  if (!subscription.active) return [];
+
+  const first = invoiceDueDateForPurchase(
+    subscription.start_date,
+    card.due_day,
+    cardClosingDay(card)
+  );
+
+  return Array.from({ length: horizonMonths }, (_, i) => {
+    const monthDate = dueDateInMonth(
+      first.getFullYear(),
+      first.getMonth() + i,
+      card.due_day
+    );
+    return {
+      dueDate: toISODate(monthDate),
+      amount: subscription.amount,
+      purchaseId: subscription.id,
+      installmentNumber: i + 1,
+      installmentsTotal: 0,
+      purchaseDescription: subscription.description,
+      categoryId: subscription.category_id,
+      isSubscription: true,
+    };
+  });
+}
+
+/** Todas as linhas de fatura (compras + assinaturas). */
+export function allInstallmentLines(
+  purchases: CardPurchase[],
+  subscriptions: CardSubscription[],
+  card: CreditCard
+): InstallmentLine[] {
+  const lines: InstallmentLine[] = [];
+  for (const purchase of purchases) {
+    lines.push(...installmentsForPurchaseWithCard(purchase, card));
+  }
+  for (const subscription of subscriptions) {
+    if (subscription.credit_card_id !== card.id) continue;
+    lines.push(...installmentsForSubscription(subscription, card));
+  }
+  return lines;
 }
 
 export interface AggregatedCardPayment {
@@ -109,36 +166,34 @@ export interface AggregatedCardPayment {
 /** Agrupa parcelas por data de vencimento (para gerar 1 lançamento por dia no calendário). */
 export function aggregateByDueDate(
   purchases: CardPurchase[],
-  card: CreditCard
+  card: CreditCard,
+  subscriptions: CardSubscription[] = []
 ): AggregatedCardPayment[] {
   const map = new Map<string, AggregatedCardPayment>();
-  for (const p of purchases) {
-    for (const line of installmentsForPurchaseWithCard(p, card)) {
-      const cur = map.get(line.dueDate) ?? {
-        dueDate: line.dueDate,
-        total: 0,
-        lines: [],
-      };
-      cur.total += line.amount;
-      cur.lines.push(line);
-      map.set(line.dueDate, cur);
-    }
+  for (const line of allInstallmentLines(purchases, subscriptions, card)) {
+    const cur = map.get(line.dueDate) ?? {
+      dueDate: line.dueDate,
+      total: 0,
+      lines: [],
+    };
+    cur.total += line.amount;
+    cur.lines.push(line);
+    map.set(line.dueDate, cur);
   }
   return Array.from(map.values()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-/** Total de parcelas pendentes (futuras) de um cartão. */
+/** Total em aberto (compras + assinaturas ativas). */
 export function cardOpenTotal(
   purchases: CardPurchase[],
   card: CreditCard,
-  today: Date = new Date()
+  today: Date = new Date(),
+  subscriptions: CardSubscription[] = []
 ): number {
   const todayStr = toISODate(today);
   let total = 0;
-  for (const p of purchases) {
-    for (const line of installmentsForPurchaseWithCard(p, card)) {
-      if (line.dueDate >= todayStr) total += line.amount;
-    }
+  for (const line of allInstallmentLines(purchases, subscriptions, card)) {
+    if (line.dueDate >= todayStr) total += line.amount;
   }
   return total;
 }
@@ -197,24 +252,24 @@ export function cardPaymentStatsInMonth(
   cards: CreditCard[],
   year: number,
   month0: number,
-  filterCardId?: string | null
+  filterCardId?: string | null,
+  subscriptions: CardSubscription[] = []
 ): CardPaymentStats {
   const cardMap = new Map(cards.map((card) => [card.id, card]));
   const purchaseIds = new Set<string>();
+  const subscriptionIds = new Set<string>();
   let installmentCount = 0;
   let total = 0;
 
-  for (const purchase of purchases) {
-    if (filterCardId && purchase.credit_card_id !== filterCardId) continue;
-    const card = cardMap.get(purchase.credit_card_id);
-    if (!card) continue;
-
-    for (const line of installmentsForPurchaseWithCard(purchase, card)) {
+  for (const card of cards) {
+    if (filterCardId && card.id !== filterCardId) continue;
+    const cardPurchases = purchases.filter((p) => p.credit_card_id === card.id);
+    const cardSubs = subscriptions.filter((s) => s.credit_card_id === card.id);
+    for (const line of allInstallmentLines(cardPurchases, cardSubs, card)) {
       const dueDate = parseISODate(line.dueDate);
-      if (dueDate.getFullYear() !== year || dueDate.getMonth() !== month0) {
-        continue;
-      }
-      purchaseIds.add(purchase.id);
+      if (dueDate.getFullYear() !== year || dueDate.getMonth() !== month0) continue;
+      if (line.isSubscription) subscriptionIds.add(line.purchaseId);
+      else purchaseIds.add(line.purchaseId);
       installmentCount += 1;
       total += line.amount;
     }
@@ -222,7 +277,7 @@ export function cardPaymentStatsInMonth(
 
   return {
     total: Math.round(total * 100) / 100,
-    purchaseCount: purchaseIds.size,
+    purchaseCount: purchaseIds.size + subscriptionIds.size,
     installmentCount,
   };
 }
@@ -241,20 +296,20 @@ export function spendingByCategoryInMonth(
   categories: Category[],
   year: number,
   month0: number,
-  filterCardId?: string | null
+  filterCardId?: string | null,
+  subscriptions: CardSubscription[] = []
 ): CategorySpend[] {
-  const cardMap = new Map(cards.map((c) => [c.id, c]));
   const catById = new Map(categories.map((c) => [c.id, c]));
   const totals = new Map<string, number>();
 
-  for (const p of purchases) {
-    if (filterCardId && p.credit_card_id !== filterCardId) continue;
-    const card = cardMap.get(p.credit_card_id);
-    if (!card) continue;
-    for (const line of installmentsForPurchaseWithCard(p, card)) {
+  for (const card of cards) {
+    if (filterCardId && card.id !== filterCardId) continue;
+    const cardPurchases = purchases.filter((p) => p.credit_card_id === card.id);
+    const cardSubs = subscriptions.filter((s) => s.credit_card_id === card.id);
+    for (const line of allInstallmentLines(cardPurchases, cardSubs, card)) {
       const d = parseISODate(line.dueDate);
       if (d.getFullYear() !== year || d.getMonth() !== month0) continue;
-      const key = p.category_id ?? "none";
+      const key = line.categoryId ?? "none";
       totals.set(key, (totals.get(key) ?? 0) + line.amount);
     }
   }
@@ -287,7 +342,8 @@ export function paymentsByMonthRange(
   startYear: number,
   startMonth0: number,
   monthCount: number,
-  filterCardId?: string | null
+  filterCardId?: string | null,
+  subscriptions: CardSubscription[] = []
 ): MonthlyPaymentPoint[] {
   const cardMap = new Map(cards.map((c) => [c.id, c]));
   const points: MonthlyPaymentPoint[] = [];
@@ -299,11 +355,11 @@ export function paymentsByMonthRange(
     const key = `${year}-${String(month0 + 1).padStart(2, "0")}`;
     const byCard = new Map<string, number>();
 
-    for (const p of purchases) {
-      if (filterCardId && p.credit_card_id !== filterCardId) continue;
-      const card = cardMap.get(p.credit_card_id);
-      if (!card) continue;
-      for (const line of installmentsForPurchaseWithCard(p, card)) {
+    for (const card of cards) {
+      if (filterCardId && card.id !== filterCardId) continue;
+      const cardPurchases = purchases.filter((p) => p.credit_card_id === card.id);
+      const cardSubs = subscriptions.filter((s) => s.credit_card_id === card.id);
+      for (const line of allInstallmentLines(cardPurchases, cardSubs, card)) {
         const ld = parseISODate(line.dueDate);
         if (ld.getFullYear() === year && ld.getMonth() === month0) {
           byCard.set(card.id, (byCard.get(card.id) ?? 0) + line.amount);
@@ -335,14 +391,17 @@ export function paymentsByMonthRange(
 export function allCardsOpenTotal(
   purchases: CardPurchase[],
   cards: CreditCard[],
-  today: Date = new Date()
+  today: Date = new Date(),
+  subscriptions: CardSubscription[] = []
 ): number {
   return cards.reduce(
     (sum, card) =>
-      sum + cardOpenTotal(
+      sum +
+      cardOpenTotal(
         purchases.filter((p) => p.credit_card_id === card.id),
         card,
-        today
+        today,
+        subscriptions.filter((s) => s.credit_card_id === card.id)
       ),
     0
   );
