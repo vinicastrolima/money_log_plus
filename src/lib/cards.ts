@@ -144,6 +144,7 @@ export function cardOpenTotal(
 }
 
 export const CARD_GRADIENTS: [string, string][] = [
+  ["#262626", "#000000"],
   ["#7c3aed", "#4c1d95"],
   ["#f97316", "#c2410c"],
   ["#0ea5e9", "#0369a1"],
@@ -153,6 +154,9 @@ export const CARD_GRADIENTS: [string, string][] = [
   ["#14b8a6", "#0f766e"],
   ["#e11d48", "#881337"],
 ];
+
+/** Gradiente padrão ao criar um cartão novo (roxo). */
+export const DEFAULT_CARD_GRADIENT: [string, string] = ["#7c3aed", "#4c1d95"];
 
 export const ALL_CARDS_GRADIENT: [string, string] = ["#1e293b", "#0f172a"];
 export const CARD_CHART_COLORS = CARD_GRADIENTS.map(([color]) => color);

@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
-import { CARD_GRADIENTS, cardOpenTotal, defaultClosingDay } from "@/lib/cards";
+import { CARD_GRADIENTS, DEFAULT_CARD_GRADIENT, cardOpenTotal, defaultClosingDay } from "@/lib/cards";
 
 export default function CartoesPage() {
   const {
@@ -43,7 +43,7 @@ export default function CartoesPage() {
   const [cardName, setCardName] = React.useState("");
   const [dueDay, setDueDay] = React.useState("10");
   const [closingDay, setClosingDay] = React.useState(String(defaultClosingDay(10)));
-  const [cardColors, setCardColors] = React.useState(CARD_GRADIENTS[0]);
+  const [cardColors, setCardColors] = React.useState(DEFAULT_CARD_GRADIENT);
 
   const effectiveChartScope =
     chartScope === "all" || creditCards.some((card) => card.id === chartScope)
@@ -104,7 +104,7 @@ export default function CartoesPage() {
       setCardName("");
       setDueDay("10");
       setClosingDay(String(defaultClosingDay(10)));
-      setCardColors(CARD_GRADIENTS[0]);
+      setCardColors(DEFAULT_CARD_GRADIENT);
     } finally {
       setSaving(false);
     }
