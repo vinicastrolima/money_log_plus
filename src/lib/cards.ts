@@ -27,6 +27,40 @@ export function firstPaymentDate(purchaseDate: string, dueDay: number): Date {
   return candidate;
 }
 
+/** Fechamento padrão: 7 dias antes do vencimento, com volta para o mês anterior. */
+export function defaultClosingDay(dueDay: number): number {
+  return ((dueDay - 8 + 31) % 31) + 1;
+}
+
+export function cardClosingDay(card: CreditCard): number {
+  return card.closing_day ?? defaultClosingDay(card.due_day);
+}
+
+/** Vencimento da fatura onde a compra entra, considerando o dia de fechamento. */
+export function invoiceDueDateForPurchase(
+  purchaseDate: string,
+  dueDay: number,
+  closingDay: number
+): Date {
+  const purchase = parseISODate(purchaseDate);
+  for (let offset = 0; offset < 3; offset++) {
+    const dueDate = dueDateInMonth(
+      purchase.getFullYear(),
+      purchase.getMonth() + offset,
+      dueDay
+    );
+    const closingMonthOffset = closingDay >= dueDay ? offset - 1 : offset;
+    const closingDate = dueDateInMonth(
+      purchase.getFullYear(),
+      purchase.getMonth() + closingMonthOffset,
+      closingDay
+    );
+    if (purchase <= closingDate) return dueDate;
+  }
+
+  return dueDateInMonth(purchase.getFullYear(), purchase.getMonth() + 3, dueDay);
+}
+
 /** Calcula valor de cada parcela (última absorve centavos). */
 export function splitInstallments(total: number, count: number): number[] {
   const base = Math.floor((total / count) * 100) / 100;
@@ -43,7 +77,11 @@ export function installmentsForPurchaseWithCard(
   card: CreditCard
 ): InstallmentLine[] {
   const amounts = splitInstallments(purchase.total_amount, purchase.installments);
-  const first = firstPaymentDate(purchase.purchase_date, card.due_day);
+  const first = invoiceDueDateForPurchase(
+    purchase.purchase_date,
+    card.due_day,
+    cardClosingDay(card)
+  );
 
   return amounts.map((amount, i) => {
     const monthDate = dueDateInMonth(
@@ -129,8 +167,16 @@ export function cardGradient(index: number): [string, string] {
   return CARD_GRADIENTS[normalizedPaletteIndex(index, CARD_GRADIENTS.length)];
 }
 
-export function cardChartColor(index: number): string {
-  return CARD_CHART_COLORS[
+export function creditCardGradient(
+  card: CreditCard,
+  index: number
+): [string, string] {
+  const fallback = cardGradient(index);
+  return [card.color_start ?? fallback[0], card.color_end ?? fallback[1]];
+}
+
+export function cardChartColor(card: CreditCard, index: number): string {
+  return card.color_start ?? CARD_CHART_COLORS[
     normalizedPaletteIndex(index, CARD_CHART_COLORS.length)
   ];
 }
@@ -266,7 +312,7 @@ export function paymentsByMonthRange(
       return {
         cardId,
         name: card.name,
-        color: cardChartColor(cards.findIndex((c) => c.id === cardId)),
+        color: cardChartColor(card, cards.findIndex((c) => c.id === cardId)),
         amount: Math.round(amount * 100) / 100,
       };
     });

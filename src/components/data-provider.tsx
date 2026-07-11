@@ -108,8 +108,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [categories]);
 
   const resyncCard = React.useCallback(
-    async (cardId: string, userId: string, purchasesSnapshot?: CardPurchase[]) => {
-      const card = creditCards.find((c) => c.id === cardId);
+    async (
+      cardId: string,
+      userId: string,
+      purchasesSnapshot?: CardPurchase[],
+      cardSnapshot?: CreditCard
+    ) => {
+      const card = cardSnapshot ?? creditCards.find((c) => c.id === cardId);
       const catId = getCartaoCategoryId();
       if (!card || !catId) return;
       const purchases =
@@ -234,13 +239,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (id: string, input: CreditCardInput) => {
       const userId = await getUserId();
       if (!userId) return;
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("credit_cards")
         .update(input)
-        .eq("id", id);
+        .eq("id", id)
+        .select()
+        .single();
       if (error) throw error;
-      await load();
-      await resyncCard(id, userId);
+      await resyncCard(id, userId, undefined, data as CreditCard);
       await load();
     },
     [supabase, load, resyncCard, getUserId]

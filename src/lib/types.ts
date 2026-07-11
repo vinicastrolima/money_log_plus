@@ -31,6 +31,9 @@ export interface CreditCard {
   user_id: string;
   name: string;
   due_day: number;
+  closing_day?: number | null;
+  color_start?: string | null;
+  color_end?: string | null;
   created_at: string;
 }
 
@@ -49,6 +52,9 @@ export interface CardPurchase {
 export interface CreditCardInput {
   name: string;
   due_day: number;
+  closing_day: number;
+  color_start: string;
+  color_end: string;
 }
 
 export interface CardPurchaseInput {

@@ -9,7 +9,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cardGradient } from "@/lib/cards";
+import { cardClosingDay, creditCardGradient } from "@/lib/cards";
 import type { CreditCard } from "@/lib/types";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -37,7 +37,7 @@ export function WalletCardVisual({
   onClick,
   className,
 }: WalletCardVisualProps) {
-  const [start, end] = cardGradient(data.gradientIndex);
+  const [start, end] = creditCardGradient(data.card, data.gradientIndex);
   const sharedClassName = cn(
     "relative block aspect-[1.586/1] w-full overflow-hidden rounded-[22px] text-left text-white",
     "border border-white/15 shadow-[0_18px_50px_-24px_rgba(2,6,23,0.85)] transition duration-300",
@@ -77,6 +77,8 @@ export function WalletCardVisual({
             </span>
             <span className="mt-2 block text-[11px] font-medium text-white/70 sm:text-xs">
               Vence dia {data.card.due_day}
+              <span className="mx-1.5 text-white/40">•</span>
+              Fecha dia {cardClosingDay(data.card)}
               <span className="mx-1.5 text-white/40">•</span>
               {data.purchaseCount} compra{data.purchaseCount !== 1 ? "s" : ""}
             </span>
@@ -244,8 +246,10 @@ export function WalletDeck({
             <div className="mt-7 grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
                 <CalendarClock className="text-slate-400" size={18} />
-                <p className="mt-3 text-xs text-slate-400">Próximo vencimento</p>
-                <p className="mt-0.5 font-semibold">Dia {frontCard.card.due_day}</p>
+                <p className="mt-3 text-xs text-slate-400">Fechamento / vencimento</p>
+                <p className="mt-0.5 font-semibold">
+                  Dia {cardClosingDay(frontCard.card)} / {frontCard.card.due_day}
+                </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
                 <Layers3 className="text-slate-400" size={18} />
@@ -286,7 +290,7 @@ export function WalletDeck({
           <div className="scrollbar-none -mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1">
             {cards.map((item) => {
               const active = item.card.id === frontCard.card.id;
-              const [color] = cardGradient(item.gradientIndex);
+              const [color] = creditCardGradient(item.card, item.gradientIndex);
               return (
                 <button
                   key={item.card.id}
@@ -334,7 +338,7 @@ export function WalletDeck({
               key={item.card.id}
               label={item.card.name}
               active={chartScope === item.card.id}
-              color={cardGradient(item.gradientIndex)[0]}
+              color={creditCardGradient(item.card, item.gradientIndex)[0]}
               onClick={() => selectCard(item.card.id)}
             />
           ))}

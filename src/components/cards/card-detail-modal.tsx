@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { WalletCardVisual } from "@/components/cards/wallet-stack";
 import {
+  CARD_GRADIENTS,
   aggregateByDueDate,
+  cardClosingDay,
   cardOpenTotal,
   splitInstallments,
 } from "@/lib/cards";
@@ -29,7 +31,13 @@ interface Props {
   purchases: CardPurchase[];
   categories: Category[];
   openPurchaseOnMount?: boolean;
-  onSaveCard: (input: { name: string; due_day: number }) => Promise<void>;
+  onSaveCard: (input: {
+    name: string;
+    due_day: number;
+    closing_day: number;
+    color_start: string;
+    color_end: string;
+  }) => Promise<void>;
   onDeleteCard: () => Promise<void>;
   onSavePurchase: (input: {
     id?: string;
@@ -70,6 +78,11 @@ function CardDetailModalContent({
   const [editingSettings, setEditingSettings] = React.useState(false);
   const [cardName, setCardName] = React.useState(card.name);
   const [dueDay, setDueDay] = React.useState(String(card.due_day));
+  const [closingDay, setClosingDay] = React.useState(String(cardClosingDay(card)));
+  const [cardColors, setCardColors] = React.useState<[string, string]>(() => {
+    const fallback = CARD_GRADIENTS[gradientIndex % CARD_GRADIENTS.length];
+    return [card.color_start ?? fallback[0], card.color_end ?? fallback[1]];
+  });
   const [purchaseModalOpen, setPurchaseModalOpen] = React.useState(
     Boolean(openPurchaseOnMount)
   );
@@ -121,11 +134,19 @@ function CardDetailModalContent({
   async function handleSaveSettings(event: React.FormEvent) {
     event.preventDefault();
     const day = Number(dueDay);
+    const closeDay = Number(closingDay);
     if (!cardName.trim() || !Number.isInteger(day) || day < 1 || day > 31) return;
+    if (!Number.isInteger(closeDay) || closeDay < 1 || closeDay > 31) return;
 
     setSaving(true);
     try {
-      await onSaveCard({ name: cardName.trim(), due_day: day });
+      await onSaveCard({
+        name: cardName.trim(),
+        due_day: day,
+        closing_day: closeDay,
+        color_start: cardColors[0],
+        color_end: cardColors[1],
+      });
       setEditingSettings(false);
     } finally {
       setSaving(false);
@@ -240,7 +261,9 @@ function CardDetailModalContent({
             >
               <div>
                 <p className="text-sm font-semibold">Configurações do cartão</p>
-                <p className="mt-0.5 text-xs text-muted">Atualize o nome e o dia de pagamento.</p>
+                <p className="mt-0.5 text-xs text-muted">
+                  Atualize nome, fechamento, vencimento e cores.
+                </p>
               </div>
               <div>
                 <Label htmlFor="detail-name">Nome</Label>
@@ -268,6 +291,44 @@ function CardDetailModalContent({
                     </option>
                   ))}
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="detail-closing">Dia do fechamento</Label>
+                <Select
+                  id="detail-closing"
+                  className="h-11"
+                  value={closingDay}
+                  onChange={(event) => setClosingDay(event.target.value)}
+                  disabled={saving}
+                >
+                  {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                    <option key={day} value={String(day)}>
+                      Dia {day}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label>Cores do cartão</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {CARD_GRADIENTS.map((colors) => (
+                    <button
+                      key={colors.join("-")}
+                      type="button"
+                      aria-pressed={
+                        cardColors[0] === colors[0] && cardColors[1] === colors[1]
+                      }
+                      onClick={() => setCardColors(colors)}
+                      disabled={saving}
+                      className="h-11 rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 aria-pressed:ring-2 aria-pressed:ring-primary"
+                      style={{
+                        background: `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 100%)`,
+                      }}
+                    >
+                      <span className="sr-only">Selecionar cor</span>
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <Button type="submit" className="min-h-11" disabled={saving}>

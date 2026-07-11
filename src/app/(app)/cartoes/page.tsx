@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
-import { cardOpenTotal } from "@/lib/cards";
+import { CARD_GRADIENTS, cardOpenTotal, defaultClosingDay } from "@/lib/cards";
 
 export default function CartoesPage() {
   const {
@@ -42,6 +42,8 @@ export default function CartoesPage() {
 
   const [cardName, setCardName] = React.useState("");
   const [dueDay, setDueDay] = React.useState("10");
+  const [closingDay, setClosingDay] = React.useState(String(defaultClosingDay(10)));
+  const [cardColors, setCardColors] = React.useState(CARD_GRADIENTS[0]);
 
   const effectiveChartScope =
     chartScope === "all" || creditCards.some((card) => card.id === chartScope)
@@ -86,13 +88,23 @@ export default function CartoesPage() {
   async function handleCreateCard(e: React.FormEvent) {
     e.preventDefault();
     const day = Number(dueDay);
+    const closeDay = Number(closingDay);
     if (!cardName.trim() || !Number.isInteger(day) || day < 1 || day > 31) return;
+    if (!Number.isInteger(closeDay) || closeDay < 1 || closeDay > 31) return;
     setSaving(true);
     try {
-      await addCreditCard({ name: cardName.trim(), due_day: day });
+      await addCreditCard({
+        name: cardName.trim(),
+        due_day: day,
+        closing_day: closeDay,
+        color_start: cardColors[0],
+        color_end: cardColors[1],
+      });
       setNewCardOpen(false);
       setCardName("");
       setDueDay("10");
+      setClosingDay(String(defaultClosingDay(10)));
+      setCardColors(CARD_GRADIENTS[0]);
     } finally {
       setSaving(false);
     }
@@ -209,7 +221,10 @@ export default function CartoesPage() {
             <Select
               id="new-due"
               value={dueDay}
-              onChange={(e) => setDueDay(e.target.value)}
+              onChange={(e) => {
+                setDueDay(e.target.value);
+                setClosingDay(String(defaultClosingDay(Number(e.target.value))));
+              }}
             >
               {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                 <option key={d} value={String(d)}>
@@ -217,6 +232,39 @@ export default function CartoesPage() {
                 </option>
               ))}
             </Select>
+          </div>
+          <div>
+            <Label htmlFor="new-closing">Dia do fechamento</Label>
+            <Select
+              id="new-closing"
+              value={closingDay}
+              onChange={(e) => setClosingDay(e.target.value)}
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={String(d)}>
+                  Dia {d}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Cores do cartão</Label>
+            <div className="grid grid-cols-4 gap-2">
+              {CARD_GRADIENTS.map((colors) => (
+                <button
+                  key={colors.join("-")}
+                  type="button"
+                  aria-pressed={cardColors[0] === colors[0] && cardColors[1] === colors[1]}
+                  onClick={() => setCardColors(colors)}
+                  className="h-11 rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:ring-2 aria-pressed:ring-primary"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 100%)`,
+                  }}
+                >
+                  <span className="sr-only">Selecionar cor</span>
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button

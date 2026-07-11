@@ -166,6 +166,7 @@ export function CardChartsPanel({
           id: card.id,
           name: card.name,
           color: cardChartColor(
+            card,
             creditCards.findIndex((candidate) => candidate.id === card.id)
           ),
         })),

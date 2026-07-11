@@ -24,8 +24,18 @@ create table if not exists public.credit_cards (
   user_id uuid not null references auth.users (id) on delete cascade,
   name text not null,
   due_day int not null check (due_day >= 1 and due_day <= 31),
+  closing_day int check (closing_day is null or (closing_day >= 1 and closing_day <= 31)),
+  color_start text not null default '#7c3aed',
+  color_end text not null default '#4c1d95',
   created_at timestamptz not null default now()
 );
+
+alter table public.credit_cards
+  add column if not exists closing_day int check (closing_day is null or (closing_day >= 1 and closing_day <= 31));
+alter table public.credit_cards
+  add column if not exists color_start text not null default '#7c3aed';
+alter table public.credit_cards
+  add column if not exists color_end text not null default '#4c1d95';
 
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),

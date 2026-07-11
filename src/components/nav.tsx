@@ -81,7 +81,10 @@ export function Nav({ userEmail }: NavProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-sidebar/95 px-4 backdrop-blur-lg md:hidden">
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-sidebar/95 px-4 pb-3 pt-3 backdrop-blur-lg md:hidden"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+      >
         <Link
           href="/"
           className="inline-flex items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
