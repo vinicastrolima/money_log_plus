@@ -11,6 +11,7 @@ import {
   Tags,
   LogOut,
   Wallet,
+  CreditCard,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ const links = [
   { href: "/calendario", label: "Calendário", icon: CalendarDays },
   { href: "/lista", label: "Lista", icon: List },
   { href: "/graficos", label: "Gráficos", icon: PieChart },
+  { href: "/cartoes", label: "Cartões", icon: CreditCard },
   { href: "/categorias", label: "Categorias", icon: Tags },
 ];
 

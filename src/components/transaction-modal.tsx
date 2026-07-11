@@ -7,7 +7,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { useData } from "@/components/data-provider";
 import type { Direction, Transaction, TxStatus, TxType } from "@/lib/types";
 import { TX_STATUS, TX_STATUS_ORDER, suggestStatusForDate } from "@/lib/transaction-status";
-import { toISODate } from "@/lib/utils";
+import { toISODate, formatCurrency, formatDateBR } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -70,8 +70,11 @@ export function TransactionModal({
     (c) => c.kind === "both" || (direction === "in" ? c.kind === "income" : c.kind === "expense")
   );
 
+  const isAutoCard = Boolean(transaction?.credit_card_id);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isAutoCard) return;
     setError(null);
     const parsed = Number(amount.replace(/\./g, "").replace(",", "."));
     if (!description.trim()) return setError("Informe uma descrição.");
@@ -101,7 +104,7 @@ export function TransactionModal({
   }
 
   async function handleDelete() {
-    if (!transaction) return;
+    if (!transaction || isAutoCard) return;
     if (!confirm("Excluir esta transação?")) return;
     setSaving(true);
     try {
@@ -118,6 +121,76 @@ export function TransactionModal({
       onClose={onClose}
       title={transaction ? "Editar transação" : "Nova transação"}
     >
+      {isAutoCard ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Este lançamento foi gerado automaticamente a partir de compras no cartão. Para alterar
+            valor ou data, edite as compras na aba{" "}
+            <a href="/cartoes" className="font-medium text-primary underline">
+              Cartões
+            </a>
+            . Você ainda pode marcar o status como concluído abaixo.
+          </p>
+          <div className="rounded-lg border border-border p-3 text-sm">
+            <p className="font-medium">{transaction?.description}</p>
+            <p className="text-expense">{transaction && formatCurrency(transaction.amount)}</p>
+            <p className="text-muted">{transaction && formatDateBR(transaction.date)}</p>
+          </div>
+          <div>
+            <Label>Status</Label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {TX_STATUS_ORDER.map((s) => {
+                const cfg = TX_STATUS[s];
+                const active = status === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStatus(s)}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
+                      active ? cfg.badge : "border-border text-muted hover:bg-slate-50"
+                    )}
+                  >
+                    <span className={cn("h-2.5 w-2.5 rounded-full", cfg.dot)} />
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Fechar
+            </Button>
+            <Button
+              disabled={saving}
+              onClick={async () => {
+                if (!transaction) return;
+                setSaving(true);
+                try {
+                  await updateTransaction(transaction.id, {
+                    date: transaction.date,
+                    description: transaction.description,
+                    amount: transaction.amount,
+                    direction: transaction.direction,
+                    category_id: transaction.category_id,
+                    type: transaction.type,
+                    status,
+                  });
+                  onClose();
+                } catch {
+                  setError("Erro ao salvar status.");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? "Salvando..." : "Salvar status"}
+            </Button>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -264,6 +337,7 @@ export function TransactionModal({
           </div>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

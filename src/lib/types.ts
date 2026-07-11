@@ -22,7 +22,40 @@ export interface Transaction {
   category_id: string | null;
   type: TxType;
   status: TxStatus;
+  credit_card_id: string | null;
   created_at: string;
+}
+
+export interface CreditCard {
+  id: string;
+  user_id: string;
+  name: string;
+  due_day: number;
+  created_at: string;
+}
+
+export interface CardPurchase {
+  id: string;
+  user_id: string;
+  credit_card_id: string;
+  description: string;
+  total_amount: number;
+  installments: number;
+  purchase_date: string;
+  created_at: string;
+}
+
+export interface CreditCardInput {
+  name: string;
+  due_day: number;
+}
+
+export interface CardPurchaseInput {
+  credit_card_id: string;
+  description: string;
+  total_amount: number;
+  installments: number;
+  purchase_date: string;
 }
 
 export interface TransactionWithCategory extends Transaction {

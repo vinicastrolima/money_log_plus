@@ -19,6 +19,14 @@ create table if not exists public.categories (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.credit_cards (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null,
+  due_day int not null check (due_day >= 1 and due_day <= 31),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -29,6 +37,18 @@ create table if not exists public.transactions (
   category_id uuid references public.categories (id) on delete set null,
   type text not null default 'prevista' check (type in ('prevista', 'diaria')),
   status text not null default 'pendente' check (status in ('concluido', 'pendente', 'atrasado')),
+  credit_card_id uuid references public.credit_cards (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.card_purchases (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  credit_card_id uuid not null references public.credit_cards (id) on delete cascade,
+  description text not null,
+  total_amount numeric(14, 2) not null check (total_amount > 0),
+  installments int not null default 1 check (installments >= 1 and installments <= 48),
+  purchase_date date not null,
   created_at timestamptz not null default now()
 );
 
@@ -42,6 +62,12 @@ create index if not exists transactions_user_date_idx
   on public.transactions (user_id, date);
 create index if not exists categories_user_idx
   on public.categories (user_id);
+create index if not exists credit_cards_user_idx
+  on public.credit_cards (user_id);
+create index if not exists card_purchases_card_idx
+  on public.card_purchases (credit_card_id);
+create index if not exists transactions_credit_card_idx
+  on public.transactions (credit_card_id) where credit_card_id is not null;
 
 -- ------------------------------------------------------------
 -- Row Level Security (cada usuario ve apenas os proprios dados)
@@ -50,6 +76,8 @@ create index if not exists categories_user_idx
 alter table public.categories enable row level security;
 alter table public.transactions enable row level security;
 alter table public.settings enable row level security;
+alter table public.credit_cards enable row level security;
+alter table public.card_purchases enable row level security;
 
 -- categories
 drop policy if exists "categories_select_own" on public.categories;
@@ -77,6 +105,34 @@ create policy "transactions_update_own" on public.transactions
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "transactions_delete_own" on public.transactions;
 create policy "transactions_delete_own" on public.transactions
+  for delete using (auth.uid() = user_id);
+
+-- credit_cards
+drop policy if exists "credit_cards_select_own" on public.credit_cards;
+create policy "credit_cards_select_own" on public.credit_cards
+  for select using (auth.uid() = user_id);
+drop policy if exists "credit_cards_insert_own" on public.credit_cards;
+create policy "credit_cards_insert_own" on public.credit_cards
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "credit_cards_update_own" on public.credit_cards;
+create policy "credit_cards_update_own" on public.credit_cards
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "credit_cards_delete_own" on public.credit_cards;
+create policy "credit_cards_delete_own" on public.credit_cards
+  for delete using (auth.uid() = user_id);
+
+-- card_purchases
+drop policy if exists "card_purchases_select_own" on public.card_purchases;
+create policy "card_purchases_select_own" on public.card_purchases
+  for select using (auth.uid() = user_id);
+drop policy if exists "card_purchases_insert_own" on public.card_purchases;
+create policy "card_purchases_insert_own" on public.card_purchases
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "card_purchases_update_own" on public.card_purchases;
+create policy "card_purchases_update_own" on public.card_purchases
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "card_purchases_delete_own" on public.card_purchases;
+create policy "card_purchases_delete_own" on public.card_purchases
   for delete using (auth.uid() = user_id);
 
 -- settings
