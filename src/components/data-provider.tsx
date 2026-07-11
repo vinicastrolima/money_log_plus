@@ -88,7 +88,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   React.useEffect(() => {
-    load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const refresh = React.useCallback(async () => {

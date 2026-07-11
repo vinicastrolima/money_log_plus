@@ -3,14 +3,19 @@
 import * as React from "react";
 import { Plus, CreditCard as CreditCardIcon } from "lucide-react";
 import { useData } from "@/components/data-provider";
-import { WalletCarousel, type WalletSlide } from "@/components/cards/wallet-carousel";
+import {
+  WalletDeck,
+  type ChartScope,
+  type WalletCardData,
+} from "@/components/cards/wallet-stack";
 import { CardChartsPanel } from "@/components/cards/card-charts-panel";
 import { CardDetailModal } from "@/components/cards/card-detail-modal";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { allCardsOpenTotal, cardOpenTotal } from "@/lib/cards";
+import { PageHeader } from "@/components/ui/page-header";
+import { cardOpenTotal } from "@/lib/cards";
 
 export default function CartoesPage() {
   const {
@@ -29,22 +34,22 @@ export default function CartoesPage() {
   const now = new Date();
   const [year, setYear] = React.useState(now.getFullYear());
   const [month0, setMonth0] = React.useState(now.getMonth());
-  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [chartScope, setChartScope] = React.useState<ChartScope>("all");
   const [detailCardId, setDetailCardId] = React.useState<string | null>(null);
+  const [openPurchaseOnDetail, setOpenPurchaseOnDetail] = React.useState(false);
   const [newCardOpen, setNewCardOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   const [cardName, setCardName] = React.useState("");
   const [dueDay, setDueDay] = React.useState("10");
 
-  const slides = React.useMemo((): WalletSlide[] => {
-    const allSlide: WalletSlide = {
-      type: "all",
-      openTotal: allCardsOpenTotal(cardPurchases, creditCards),
-      cardCount: creditCards.length,
-    };
-    const cardSlides: WalletSlide[] = creditCards.map((card, i) => ({
-      type: "card",
+  const effectiveChartScope =
+    chartScope === "all" || creditCards.some((card) => card.id === chartScope)
+      ? chartScope
+      : "all";
+
+  const walletCards = React.useMemo((): WalletCardData[] => {
+    return creditCards.map((card, i) => ({
       card,
       openTotal: cardOpenTotal(
         cardPurchases.filter((p) => p.credit_card_id === card.id),
@@ -53,14 +58,13 @@ export default function CartoesPage() {
       purchaseCount: cardPurchases.filter((p) => p.credit_card_id === card.id).length,
       gradientIndex: i,
     }));
-    return [allSlide, ...cardSlides];
   }, [creditCards, cardPurchases]);
 
-  const activeSlide = slides[activeIndex];
-  const filterCardId =
-    activeSlide?.type === "card" ? activeSlide.card.id : null;
+  const filterCardId = effectiveChartScope === "all" ? null : effectiveChartScope;
   const filterLabel =
-    activeSlide?.type === "card" ? activeSlide.card.name : "Todos os cartões";
+    effectiveChartScope === "all"
+      ? "Todos os cartões"
+      : creditCards.find((c) => c.id === effectiveChartScope)?.name ?? "Cartão";
 
   const detailCard = detailCardId
     ? creditCards.find((c) => c.id === detailCardId) ?? null
@@ -69,9 +73,14 @@ export default function CartoesPage() {
     ? creditCards.findIndex((c) => c.id === detailCard.id)
     : 0;
 
-  function handleCardClick(slide: WalletSlide, index: number) {
-    setActiveIndex(index);
-    if (slide.type === "card") setDetailCardId(slide.card.id);
+  function openManage(cardId: string) {
+    setDetailCardId(cardId);
+    setOpenPurchaseOnDetail(false);
+  }
+
+  function openPurchase(cardId: string) {
+    setDetailCardId(cardId);
+    setOpenPurchaseOnDetail(true);
   }
 
   async function handleCreateCard(e: React.FormEvent) {
@@ -89,50 +98,44 @@ export default function CartoesPage() {
     }
   }
 
-  if (loading) {
-    return <p className="text-sm text-muted">Carregando cartões...</p>;
-  }
-
   return (
-    <div className="space-y-8 pb-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Cartões</h1>
-          <p className="text-sm text-muted">
-            Deslize entre os cartões · Toque para configurar · Gráficos atualizam ao arrastar
-          </p>
-        </div>
-        <Button onClick={() => setNewCardOpen(true)}>
-          <Plus size={16} />
-          Novo cartão
-        </Button>
-      </div>
+    <div className="space-y-6 pb-4 lg:space-y-8">
+      <PageHeader
+        title="Cartões"
+        description="Acompanhe sua carteira, compras e próximas faturas."
+        actions={
+          <Button className="shrink-0" onClick={() => setNewCardOpen(true)}>
+            <Plus size={17} />
+            <span className="hidden sm:inline">Novo cartão</span>
+            <span className="sm:hidden">Novo</span>
+          </Button>
+        }
+      />
 
-      {creditCards.length === 0 ? (
-        <Card className="flex flex-col items-center gap-4 p-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
-            <CreditCardIcon size={32} className="text-muted" />
-          </div>
-          <div>
-            <p className="font-medium">Sua carteira está vazia</p>
-            <p className="mt-1 text-sm text-muted">
-              Adicione um cartão para começar a registrar compras e ver as faturas no calendário.
-            </p>
-          </div>
-          <Button onClick={() => setNewCardOpen(true)}>Criar primeiro cartão</Button>
-        </Card>
+      {loading ? (
+        <CardsPageSkeleton />
+      ) : creditCards.length === 0 ? (
+        <EmptyState
+          icon={CreditCardIcon}
+          title="Sua carteira está vazia"
+          description="Adicione seu primeiro cartão para registrar compras, acompanhar parcelas e visualizar as faturas no calendário."
+          action={
+            <Button onClick={() => setNewCardOpen(true)}>
+              <Plus size={17} />
+              Criar primeiro cartão
+            </Button>
+          }
+          className="min-h-[360px]"
+        />
       ) : (
         <>
-          <WalletCarousel
-            slides={slides}
-            activeIndex={activeIndex}
-            onActiveIndexChange={setActiveIndex}
-            onCardClick={handleCardClick}
+          <WalletDeck
+            cards={walletCards}
+            chartScope={effectiveChartScope}
+            onChartScopeChange={setChartScope}
+            onManageCard={openManage}
+            onNewPurchase={openPurchase}
           />
-
-          <p className="-mt-4 text-center text-xs text-muted">
-            Toque no cartão para configurar e adicionar compras
-          </p>
 
           <CardChartsPanel
             creditCards={creditCards}
@@ -153,11 +156,15 @@ export default function CartoesPage() {
       {detailCard && (
         <CardDetailModal
           open={Boolean(detailCardId)}
-          onClose={() => setDetailCardId(null)}
+          onClose={() => {
+            setDetailCardId(null);
+            setOpenPurchaseOnDetail(false);
+          }}
           card={detailCard}
           gradientIndex={detailGradientIndex}
           purchases={cardPurchases.filter((p) => p.credit_card_id === detailCard.id)}
           categories={categories}
+          openPurchaseOnMount={openPurchaseOnDetail}
           onSaveCard={async (input) => {
             await updateCreditCard(detailCard.id, input);
           }}
@@ -211,21 +218,47 @@ export default function CartoesPage() {
               ))}
             </Select>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={() => setNewCardOpen(false)}
+              className="w-full sm:w-auto"
               disabled={saving}
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
               {saving ? "Salvando..." : "Criar cartão"}
             </Button>
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+function CardsPageSkeleton() {
+  return (
+    <div className="space-y-5" aria-label="Carregando cartões" aria-busy="true">
+      <div className="animate-pulse rounded-[24px] bg-slate-200/80 p-4 sm:p-6 lg:p-8">
+        <div className="grid items-center gap-8 lg:grid-cols-[minmax(320px,440px)_1fr]">
+          <div className="mx-auto aspect-[1.586/1] w-full max-w-[420px] rounded-[22px] bg-slate-300/80" />
+          <div className="hidden space-y-4 lg:block">
+            <div className="h-3 w-28 rounded-full bg-slate-300" />
+            <div className="h-9 w-48 rounded-lg bg-slate-300" />
+            <div className="h-12 w-64 rounded-lg bg-slate-300" />
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="h-24 rounded-2xl bg-slate-300" />
+              <div className="h-24 rounded-2xl bg-slate-300" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="h-72 animate-pulse rounded-2xl border border-border bg-card" />
+        <div className="h-72 animate-pulse rounded-2xl border border-border bg-card" />
+      </div>
     </div>
   );
 }

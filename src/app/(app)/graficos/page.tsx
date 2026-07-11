@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { ChartNoAxesColumn } from "lucide-react";
 import {
   PieChart,
   Pie,
@@ -17,6 +18,8 @@ import {
 import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { filterByMonth, getExpenseByCategory, getExpenseTransactions } from "@/lib/budget";
 import { daysInMonth, formatCurrency, parseISODate } from "@/lib/utils";
 
@@ -75,38 +78,43 @@ export default function ChartsPage() {
   const hasExpenses = totalExpense > 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Gráficos</h1>
-          <p className="text-sm text-muted">Para onde está indo seu dinheiro</p>
-        </div>
-        <MonthSwitcher
-          year={year}
-          month0={month0}
-          onChange={(y, m) => {
-            setYear(y);
-            setMonth0(m);
-          }}
-        />
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Gráficos"
+        description="Entenda a distribuição e a evolução das suas movimentações."
+        actions={
+          <MonthSwitcher
+            year={year}
+            month0={month0}
+            onChange={(y, m) => {
+              setYear(y);
+              setMonth0(m);
+            }}
+          />
+        }
+      />
 
       {loading ? (
-        <p className="text-sm text-muted">Carregando...</p>
+        <ChartsSkeleton />
       ) : !hasExpenses ? (
-        <Card>
-          <p className="py-8 text-center text-sm text-muted">
-            Sem saídas neste mês para gerar gráficos.
-          </p>
+        <Card className="p-0">
+          <EmptyState
+            icon={ChartNoAxesColumn}
+            title="Ainda não há dados para analisar"
+            description="Registre saídas neste mês para visualizar categorias e tendências."
+            className="border-0 py-12 shadow-none"
+          />
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
             {/* Pizza por categoria */}
-            <Card>
-              <h3 className="mb-3 font-semibold">Gastos por categoria</h3>
-              <p className="mb-2 text-xs text-muted">Apenas saídas (despesas)</p>
-              <div className="h-72">
+            <Card className="min-w-0 p-4 sm:p-5">
+              <div className="mb-3">
+                <h2 className="font-semibold">Gastos por categoria</h2>
+                <p className="text-xs text-muted">Participação de cada categoria nas saídas</p>
+              </div>
+              <div className="h-60 min-w-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -125,24 +133,25 @@ export default function ChartsPage() {
                     </Pie>
                     <Tooltip
                       formatter={(v) => formatCurrency(Number(v))}
+                      contentStyle={TOOLTIP_STYLE}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <ul className="mt-2 space-y-1.5">
+              <ul className="mt-2 space-y-2">
                 {byCategory.map((c, i) => (
                   <li
                     key={i}
-                    className="flex items-center justify-between text-sm"
+                    className="flex min-w-0 items-center justify-between gap-3 text-sm"
                   >
-                    <span className="flex items-center gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
                       <span
-                        className="h-3 w-3 rounded-full"
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{ background: c.color }}
                       />
-                      {c.name}
+                      <span className="truncate">{c.name}</span>
                     </span>
-                    <span className="font-medium">
+                    <span className="shrink-0 font-medium tabular-nums">
                       {formatCurrency(c.total)}{" "}
                       <span className="text-muted">
                         ({Math.round((c.total / totalExpense) * 100)}%)
@@ -154,19 +163,25 @@ export default function ChartsPage() {
             </Card>
 
             {/* Prevista x diaria */}
-            <Card>
-              <h3 className="mb-3 font-semibold">Prevista x Diária</h3>
-              <div className="h-72">
+            <Card className="min-w-0 p-4 sm:p-5">
+              <div className="mb-3">
+                <h2 className="font-semibold">Prevista x diária</h2>
+                <p className="text-xs text-muted">Contas planejadas comparadas aos gastos do dia a dia</p>
+              </div>
+              <div className="h-60 min-w-0 sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={prevVsDaily}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <BarChart data={prevVsDaily} margin={{ left: 0, right: 8 }}>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis
                       fontSize={11}
-                      tickFormatter={(v) => `R$${v}`}
-                      width={60}
+                      tickFormatter={formatAxisCurrency}
+                      width={52}
                     />
-                    <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                    <Tooltip
+                      formatter={(v) => formatCurrency(Number(v))}
+                      contentStyle={TOOLTIP_STYLE}
+                    />
                     <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
                       {prevVsDaily.map((d, i) => (
                         <Cell key={i} fill={d.color} />
@@ -175,34 +190,74 @@ export default function ChartsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <p className="mt-2 text-xs text-muted">
-                Gastos &quot;previstos&quot; (contas fixas) vs &quot;diários&quot; (dia a dia).
-              </p>
             </Card>
           </div>
 
           {/* Barras por dia */}
-          <Card>
-            <h3 className="mb-3 font-semibold">Movimentação por dia</h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={byDay}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="dia" fontSize={11} interval={2} />
-                  <YAxis fontSize={11} tickFormatter={(v) => `R$${v}`} width={60} />
-                  <Tooltip
-                    formatter={(v) => formatCurrency(Number(v))}
-                    labelFormatter={(l) => `Dia ${l}`}
-                  />
-                  <Legend />
-                  <Bar dataKey="Entradas" fill="#16a34a" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Saídas" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+          <Card className="min-w-0 p-4 sm:p-5">
+            <div className="mb-3">
+              <h2 className="font-semibold">Movimentação por dia</h2>
+              <p className="text-xs text-muted">Entradas e saídas ao longo do mês</p>
+              <p className="mt-1 text-xs text-muted lg:hidden">
+                Arraste horizontalmente para visualizar todos os dias.
+              </p>
+            </div>
+            <div className="overflow-x-auto overscroll-x-contain">
+              <div className="h-72 min-w-[680px] lg:min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={byDay} margin={{ left: 0, right: 8 }}>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="dia" fontSize={11} interval={2} />
+                    <YAxis fontSize={11} tickFormatter={formatAxisCurrency} width={52} />
+                    <Tooltip
+                      formatter={(v) => formatCurrency(Number(v))}
+                      labelFormatter={(l) => `Dia ${l}`}
+                      contentStyle={TOOLTIP_STYLE}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="Entradas" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Saídas" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+const TOOLTIP_STYLE: React.CSSProperties = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 10,
+  boxShadow: "0 8px 24px rgb(15 23 42 / 0.12)",
+  fontSize: 12,
+};
+
+function formatAxisCurrency(value: number) {
+  if (Math.abs(value) >= 1000) return `R$${Math.round(value / 1000)}k`;
+  return `R$${Math.round(value)}`;
+}
+
+function ChartsSkeleton() {
+  return (
+    <div className="space-y-4" role="status" aria-label="Carregando gráficos">
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 2 }, (_, index) => (
+          <div key={index} className="card animate-pulse p-5">
+            <div className="h-5 w-40 rounded-full bg-border" />
+            <div className="mt-2 h-3 w-56 max-w-full rounded-full bg-border" />
+            <div className="mt-5 h-60 rounded-xl bg-border sm:h-72" />
+          </div>
+        ))}
+      </div>
+      <div className="card animate-pulse p-5">
+        <div className="h-5 w-44 rounded-full bg-border" />
+        <div className="mt-5 h-72 rounded-xl bg-border" />
+      </div>
+      <span className="sr-only">Carregando...</span>
     </div>
   );
 }

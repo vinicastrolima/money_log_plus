@@ -8,9 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
       "Controle financeiro pessoal com calendário, cartões, categorias e orçamento diário",
     start_url: "/",
     display: "standalone",
-    orientation: "portrait",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#f4f7fb",
+    theme_color: "#f4f7fb",
     lang: "pt-BR",
     icons: [
       {

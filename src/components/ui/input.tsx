@@ -9,7 +9,7 @@ export const Input = React.forwardRef<
     <input
       ref={ref}
       className={cn(
-        "h-10 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none transition-colors placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/20",
+        "h-11 w-full rounded-xl border border-border-strong bg-card px-3.5 text-sm text-foreground shadow-[0_1px_1px_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-muted/80 focus:border-primary focus:ring-2 focus:ring-ring/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-expense aria-invalid:ring-expense/20",
         className
       )}
       {...props}
@@ -26,7 +26,7 @@ export const Select = React.forwardRef<
     <select
       ref={ref}
       className={cn(
-        "h-10 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20",
+        "h-11 w-full rounded-xl border border-border-strong bg-card px-3.5 text-sm text-foreground shadow-[0_1px_1px_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] focus:border-primary focus:ring-2 focus:ring-ring/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-expense aria-invalid:ring-expense/20",
         className
       )}
       {...props}
@@ -41,7 +41,7 @@ export function Label({
 }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn("mb-1.5 block text-sm font-medium text-slate-700", className)}
+      className={cn("mb-1.5 block text-sm font-semibold text-foreground/85", className)}
       {...props}
     />
   );

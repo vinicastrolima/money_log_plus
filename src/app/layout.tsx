@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#f4f7fb",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   applicationName: "Money Log",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "Money Log",
   },
   formatDetection: {
@@ -55,7 +55,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full bg-background text-foreground">{children}</body>
     </html>
   );
 }

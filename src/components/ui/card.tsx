@@ -5,7 +5,7 @@ export function Card({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("card p-5 shadow-sm", className)} {...props} />;
+  return <div className={cn("card p-5", className)} {...props} />;
 }
 
 export function CardTitle({
@@ -14,7 +14,7 @@ export function CardTitle({
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("text-sm font-medium text-muted", className)}
+      className={cn("text-sm font-semibold text-muted", className)}
       {...props}
     />
   );
@@ -26,7 +26,7 @@ export function CardValue({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
-      className={cn("mt-1 text-2xl font-semibold tracking-tight", className)}
+      className={cn("mt-1.5 text-2xl font-semibold tracking-[-0.025em]", className)}
       {...props}
     />
   );

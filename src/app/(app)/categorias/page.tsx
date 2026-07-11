@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Tags, Target } from "lucide-react";
 import { useData } from "@/components/data-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { PageHeader } from "@/components/ui/page-header";
 import { formatCurrency } from "@/lib/utils";
 import type { Category, CategoryKind } from "@/lib/types";
 
@@ -41,10 +43,8 @@ export default function CategoriesPage() {
   const [kind, setKind] = React.useState<CategoryKind>("expense");
   const [saving, setSaving] = React.useState(false);
 
-  const [target, setTarget] = React.useState("");
-  React.useEffect(() => {
-    if (settings) setTarget(String(settings.daily_target));
-  }, [settings]);
+  const [target, setTarget] = React.useState<string | null>(null);
+  const targetValue = target ?? (settings ? String(settings.daily_target) : "");
 
   function openNew() {
     setEditing(null);
@@ -86,89 +86,129 @@ export default function CategoriesPage() {
   }
 
   async function handleSaveTarget() {
-    const val = Number(target.replace(",", "."));
+    const val = Number(targetValue.replace(",", "."));
     if (!Number.isFinite(val) || val < 0) return;
     await updateSettings({ daily_target: val });
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Categorias</h1>
-          <p className="text-sm text-muted">Organize e configure seu orçamento</p>
-        </div>
-        <Button onClick={openNew}>
-          <Plus size={18} /> Nova categoria
-        </Button>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Categorias"
+        description="Organize suas movimentações e configure a meta diária."
+        actions={
+          <Button className="w-full sm:w-auto" onClick={openNew}>
+            <Plus size={18} /> Nova categoria
+          </Button>
+        }
+      />
 
       {/* Meta diaria */}
-      <Card>
-        <Label htmlFor="target">Meta de gasto diário (R$)</Label>
-        <p className="mb-2 text-xs text-muted">
-          Valor que você quer poder gastar por dia. O que não gastar acumula para
-          os próximos dias.
-        </p>
-        <div className="flex items-center gap-2">
-          <Input
-            id="target"
-            inputMode="decimal"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            className="max-w-40"
-          />
-          <Button variant="secondary" onClick={handleSaveTarget}>
-            Salvar
+      <Card className="p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Target size={17} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Label htmlFor="target" className="mb-0">Meta de gasto diário (R$)</Label>
+            <p className="mt-1 text-xs text-muted">
+              O valor não utilizado fica disponível para os próximos dias.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="w-full sm:max-w-48">
+            <span className="mb-1.5 block text-xs font-medium text-muted">Valor por dia</span>
+            <Input
+              id="target"
+              inputMode="decimal"
+              value={targetValue}
+              onChange={(e) => setTarget(e.target.value)}
+              aria-describedby={settings ? "target-current" : undefined}
+            />
+          </div>
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={handleSaveTarget}>
+            Salvar meta
           </Button>
           {settings && (
-            <span className="text-sm text-muted">
-              Atual: {formatCurrency(settings.daily_target)}/dia
+            <span
+              id="target-current"
+              className="rounded-lg bg-surface px-3 py-2 text-sm text-muted sm:ml-auto"
+            >
+              Atual: <strong className="font-semibold tabular-nums text-foreground">
+                {formatCurrency(settings.daily_target)}/dia
+              </strong>
             </span>
           )}
         </div>
       </Card>
 
       {loading ? (
-        <p className="text-sm text-muted">Carregando...</p>
+        <CategoriesSkeleton />
       ) : (
         <Card className="p-0">
-          <ul className="divide-y divide-border">
-            {categories.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center gap-3 p-4"
-              >
-                <span
-                  className="h-4 w-4 shrink-0 rounded-full"
-                  style={{ background: c.color }}
-                />
-                <span className="flex-1 font-medium">{c.name}</span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                  {KIND_LABEL[c.kind]}
-                </span>
-                <button
-                  onClick={() => openEdit(c)}
-                  className="rounded-md p-2 text-muted hover:bg-slate-100 cursor-pointer"
-                  aria-label="Editar"
-                >
-                  <Pencil size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(c)}
-                  className="rounded-md p-2 text-muted hover:bg-expense-bg hover:text-expense cursor-pointer"
-                  aria-label="Excluir"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </li>
-            ))}
-            {categories.length === 0 && (
-              <li className="p-6 text-center text-sm text-muted">
-                Nenhuma categoria ainda.
-              </li>
-            )}
-          </ul>
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
+            <div>
+              <h2 className="font-semibold">Suas categorias</h2>
+              <p className="text-xs text-muted">Cores e tipos usados nos lançamentos</p>
+            </div>
+            <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-muted">
+              {categories.length}
+            </span>
+          </div>
+          {categories.length === 0 ? (
+            <EmptyState
+              icon={Tags}
+              title="Nenhuma categoria criada"
+              description="Crie categorias para organizar melhor suas entradas e saídas."
+              action={
+                <Button onClick={openNew}>
+                  <Plus size={16} /> Nova categoria
+                </Button>
+              }
+              className="border-0 py-10 shadow-none"
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {categories.map((c) => (
+                <li key={c.id} className="flex items-center gap-3 px-4 py-3 sm:px-5 sm:py-4">
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full ring-4 ring-card"
+                    style={{ background: c.color }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{c.name}</p>
+                    <span className="mt-1 inline-flex rounded-full bg-surface px-2 py-0.5 text-xs text-muted sm:hidden">
+                      {KIND_LABEL[c.kind]}
+                    </span>
+                  </div>
+                  <span className="hidden rounded-full bg-surface px-2.5 py-1 text-xs text-muted sm:inline-flex">
+                    {KIND_LABEL[c.kind]}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-11 w-11"
+                      onClick={() => openEdit(c)}
+                      aria-label={`Editar ${c.name}`}
+                    >
+                      <Pencil size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(c)}
+                      className="h-11 w-11 text-expense hover:bg-expense-bg"
+                      aria-label={`Excluir ${c.name}`}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
       )}
 
@@ -202,17 +242,18 @@ export default function CategoriesPage() {
           </div>
           <div>
             <Label>Cor</Label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2.5">
               {PALETTE.map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => setColor(p)}
-                  className={`h-8 w-8 rounded-full transition-transform cursor-pointer ${
-                    color === p ? "ring-2 ring-offset-2 ring-slate-400 scale-110" : ""
+                  className={`h-10 w-10 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    color === p ? "scale-105 ring-2 ring-primary ring-offset-2" : ""
                   }`}
                   style={{ background: p }}
                   aria-label={`Cor ${p}`}
+                  aria-pressed={color === p}
                 />
               ))}
             </div>
@@ -232,6 +273,26 @@ export default function CategoriesPage() {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+function CategoriesSkeleton() {
+  return (
+    <div className="card animate-pulse overflow-hidden p-0" role="status" aria-label="Carregando categorias">
+      <div className="border-b border-border p-4 sm:p-5">
+        <div className="h-5 w-36 rounded-full bg-border" />
+        <div className="mt-2 h-3 w-52 max-w-full rounded-full bg-border" />
+      </div>
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 border-b border-border p-4 last:border-0 sm:p-5">
+          <div className="h-4 w-4 rounded-full bg-border" />
+          <div className="h-4 w-32 rounded-full bg-border" />
+          <div className="ml-auto h-7 w-16 rounded-full bg-border" />
+          <div className="h-9 w-20 rounded-lg bg-border" />
+        </div>
+      ))}
+      <span className="sr-only">Carregando...</span>
     </div>
   );
 }

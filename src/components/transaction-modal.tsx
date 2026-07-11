@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -25,46 +26,49 @@ export function TransactionModal({
   transaction,
   defaultDate,
 }: Props) {
+  if (!open) return null;
+
+  const contentKey = transaction?.id ?? `new-${defaultDate ?? "today"}`;
+  return (
+    <TransactionModalContent
+      key={contentKey}
+      onClose={onClose}
+      transaction={transaction}
+      defaultDate={defaultDate}
+    />
+  );
+}
+
+function TransactionModalContent({
+  onClose,
+  transaction,
+  defaultDate,
+}: Omit<Props, "open">) {
   const { categories, addTransaction, updateTransaction, deleteTransaction } =
     useData();
 
-  const [date, setDate] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [amount, setAmount] = React.useState("");
-  const [direction, setDirection] = React.useState<Direction>("out");
-  const [categoryId, setCategoryId] = React.useState<string>("");
-  const [isDaily, setIsDaily] = React.useState(false);
-  const [status, setStatus] = React.useState<TxStatus>("pendente");
+  const initialDate = transaction?.date ?? defaultDate ?? toISODate(new Date());
+  const [date, setDate] = React.useState(initialDate);
+  const [description, setDescription] = React.useState(
+    transaction?.description ?? ""
+  );
+  const [amount, setAmount] = React.useState(
+    transaction ? String(transaction.amount).replace(".", ",") : ""
+  );
+  const [direction, setDirection] = React.useState<Direction>(
+    transaction?.direction ?? "out"
+  );
+  const [categoryId, setCategoryId] = React.useState<string>(
+    transaction?.category_id ?? ""
+  );
+  const [isDaily, setIsDaily] = React.useState(
+    transaction?.type === "diaria"
+  );
+  const [status, setStatus] = React.useState<TxStatus>(
+    transaction?.status ?? suggestStatusForDate(initialDate)
+  );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    if (transaction) {
-      setDate(transaction.date);
-      setDescription(transaction.description);
-      setAmount(String(transaction.amount).replace(".", ","));
-      setDirection(transaction.direction);
-      setCategoryId(transaction.category_id ?? "");
-      setIsDaily(transaction.type === "diaria");
-      setStatus(transaction.status);
-    } else {
-      const initialDate = defaultDate ?? toISODate(new Date());
-      setDate(initialDate);
-      setDescription("");
-      setAmount("");
-      setDirection("out");
-      setCategoryId("");
-      setIsDaily(false);
-      setStatus(suggestStatusForDate(initialDate));
-    }
-    setError(null);
-  }, [open, transaction, defaultDate]);
-
-  React.useEffect(() => {
-    if (!open || transaction) return;
-    setStatus(suggestStatusForDate(date));
-  }, [open, transaction, date]);
 
   const visibleCategories = categories.filter(
     (c) => c.kind === "both" || (direction === "in" ? c.kind === "income" : c.kind === "expense")
@@ -117,7 +121,7 @@ export function TransactionModal({
 
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       title={transaction ? "Editar transação" : "Nova transação"}
     >
@@ -126,9 +130,9 @@ export function TransactionModal({
           <p className="text-sm text-muted">
             Este lançamento foi gerado automaticamente a partir de compras no cartão. Para alterar
             valor ou data, edite as compras na aba{" "}
-            <a href="/cartoes" className="font-medium text-primary underline">
+            <Link href="/cartoes" className="font-medium text-primary underline">
               Cartões
-            </a>
+            </Link>
             . Você ainda pode marcar o status como concluído abaixo.
           </p>
           <div className="rounded-lg border border-border p-3 text-sm">
@@ -245,7 +249,11 @@ export function TransactionModal({
               id="tx-date"
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                setDate(nextDate);
+                if (!transaction) setStatus(suggestStatusForDate(nextDate));
+              }}
             />
           </div>
         </div>

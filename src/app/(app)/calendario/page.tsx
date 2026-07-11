@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, CalendarDays } from "lucide-react";
 import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { TransactionModal } from "@/components/transaction-modal";
@@ -9,6 +9,8 @@ import { TransactionStatusBadge } from "@/components/transaction-status-badge";
 import { dominantStatus, TX_STATUS } from "@/lib/transaction-status";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 import { filterByMonth } from "@/lib/budget";
 import {
   daysInMonth,
@@ -74,98 +76,116 @@ export default function CalendarPage() {
     : undefined;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Calendário</h1>
-          <p className="text-sm text-muted">Clique em um dia para ver ou adicionar</p>
-        </div>
-        <MonthSwitcher
-          year={year}
-          month0={month0}
-          onChange={(y, m) => {
-            setYear(y);
-            setMonth0(m);
-          }}
-        />
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Calendário"
+        description="Visualize entradas, saídas e compromissos em cada dia do mês."
+        actions={
+          <MonthSwitcher
+            year={year}
+            month0={month0}
+            onChange={(y, m) => {
+              setYear(y);
+              setMonth0(m);
+            }}
+          />
+        }
+      />
 
       {loading ? (
-        <p className="text-sm text-muted">Carregando...</p>
+        <CalendarSkeleton />
       ) : (
-        <div className="card overflow-hidden p-0 shadow-sm">
-          <div className="grid grid-cols-7 border-b border-border bg-slate-50">
-            {WEEKDAYS_PT.map((w) => (
-              <div
-                key={w}
-                className="py-2 text-center text-xs font-semibold text-muted"
-              >
-                {w}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {cells.map((day, i) => {
-              if (day === null)
-                return (
-                  <div
-                    key={i}
-                    className="min-h-[84px] border-b border-r border-border bg-slate-50/40"
-                  />
-                );
-              const iso = toISODate(new Date(year, month0, day));
-              const agg = byDay.get(day);
-              const isToday = iso === todayStr;
-              const dayStatus = agg
-                ? dominantStatus(agg.txs.map((t) => t.status))
-                : null;
-              return (
-                <button
-                  key={i}
-                  onClick={() => setSelectedDate(iso)}
-                  className={cn(
-                    "min-h-[84px] border-b border-r border-border p-1.5 text-left align-top transition-colors hover:bg-slate-50 cursor-pointer",
-                    dayStatus && `border-l-[3px] ${TX_STATUS[dayStatus].border}`
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-medium ${
-                        isToday ? "bg-primary text-white" : "text-slate-700"
-                      }`}
+        <div>
+          <p className="mb-2 text-xs text-muted lg:hidden">
+            Arraste horizontalmente para visualizar todos os dias.
+          </p>
+          <div className="card overflow-hidden p-0 shadow-sm">
+            <div className="overflow-x-auto overscroll-x-contain">
+              <div className="min-w-[700px] lg:min-w-0">
+                <div className="grid grid-cols-7 border-b border-border bg-surface">
+                  {WEEKDAYS_PT.map((w) => (
+                    <div
+                      key={w}
+                      className="py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted"
                     >
-                      {day}
-                    </span>
-                    {agg?.daily ? (
-                      <span
-                        className="h-2 w-2 rounded-full bg-amber-500"
-                        title="Tem gasto diário"
-                      />
-                    ) : null}
-                  </div>
-                  {agg && (
-                    <div className="mt-1 space-y-0.5">
-                      {agg.income > 0 && (
-                        <p className="truncate text-[11px] font-medium text-income">
-                          +{formatCurrency(agg.income)}
-                        </p>
-                      )}
-                      {agg.expense > 0 && (
-                        <p className="truncate text-[11px] font-medium text-expense">
-                          −{formatCurrency(agg.expense)}
-                        </p>
-                      )}
+                      {w}
                     </div>
-                  )}
-                </button>
-              );
-            })}
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {cells.map((day, i) => {
+                    if (day === null)
+                      return (
+                        <div
+                          key={i}
+                          className="min-h-[96px] border-b border-r border-border bg-surface/60"
+                        />
+                      );
+                    const iso = toISODate(new Date(year, month0, day));
+                    const agg = byDay.get(day);
+                    const isToday = iso === todayStr;
+                    const dayStatus = agg
+                      ? dominantStatus(agg.txs.map((t) => t.status))
+                      : null;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setSelectedDate(iso)}
+                        aria-label={`${formatDateBR(iso)}${
+                          agg ? `, ${agg.txs.length} transação(ões)` : ", sem transações"
+                        }`}
+                        aria-current={isToday ? "date" : undefined}
+                        className={cn(
+                          "min-h-[96px] border-b border-r border-border p-2 text-left align-top transition-colors hover:bg-surface focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40",
+                          dayStatus && `border-l-[3px] ${TX_STATUS[dayStatus].border}`
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={cn(
+                              "inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-semibold",
+                              isToday ? "bg-primary text-white" : "text-foreground"
+                            )}
+                          >
+                            {day}
+                          </span>
+                          {agg?.daily ? (
+                            <span
+                              className="h-2 w-2 rounded-full bg-amber-500"
+                              title="Tem gasto diário"
+                            />
+                          ) : null}
+                        </div>
+                        {agg && (
+                          <div className="mt-2 space-y-1">
+                            {agg.income > 0 && (
+                              <p className="truncate text-[11px] font-semibold tabular-nums text-income">
+                                +{formatCurrency(agg.income)}
+                              </p>
+                            )}
+                            {agg.expense > 0 && (
+                              <p className="truncate text-[11px] font-semibold tabular-nums text-expense">
+                                −{formatCurrency(agg.expense)}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Legenda */}
-      <div className="flex flex-wrap items-center gap-4 text-xs text-muted">
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted"
+        aria-label="Legenda do calendário"
+      >
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-emerald-500" /> concluído
         </span>
@@ -197,11 +217,12 @@ export default function CalendarPage() {
                 return (
                   <li key={t.id}>
                     <button
+                      type="button"
                       onClick={() => {
                         setEditing(t);
                         setTxModalOpen(true);
                       }}
-                      className="flex w-full items-center gap-3 py-3 text-left hover:bg-slate-50 cursor-pointer"
+                      className="grid w-full grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:flex"
                     >
                       <div
                         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
@@ -225,24 +246,36 @@ export default function CalendarPage() {
                           {t.type === "diaria" ? " · diário" : ""}
                         </p>
                       </div>
-                      <TransactionStatusBadge status={t.status} />
-                      <span
-                        className={`text-sm font-semibold ${
-                          t.direction === "in" ? "text-income" : "text-expense"
-                        }`}
-                      >
-                        {t.direction === "in" ? "+" : "−"}
-                        {formatCurrency(t.amount)}
-                      </span>
+                      <div className="hidden sm:block">
+                        <TransactionStatusBadge status={t.status} />
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span
+                          className={`text-sm font-semibold tabular-nums ${
+                            t.direction === "in" ? "text-income" : "text-expense"
+                          }`}
+                        >
+                          {t.direction === "in" ? "+" : "−"}
+                          {formatCurrency(t.amount)}
+                        </span>
+                        <TransactionStatusBadge
+                          status={t.status}
+                          showLabel={false}
+                          className="sm:hidden"
+                        />
+                      </div>
                     </button>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <p className="py-6 text-center text-sm text-muted">
-              Nenhuma transação neste dia.
-            </p>
+            <EmptyState
+              icon={CalendarDays}
+              title="Nenhuma transação neste dia"
+              description="Adicione uma movimentação para acompanhar este dia no calendário."
+              className="py-5"
+            />
           )}
 
           <Button
@@ -263,6 +296,36 @@ export default function CalendarPage() {
         transaction={editing}
         defaultDate={selectedDate ?? undefined}
       />
+    </div>
+  );
+}
+
+function CalendarSkeleton() {
+  return (
+    <div
+      className="card animate-pulse overflow-hidden p-0"
+      role="status"
+      aria-label="Carregando calendário"
+    >
+      <div className="overflow-x-auto">
+        <div className="min-w-[700px] lg:min-w-0">
+          <div className="grid grid-cols-7 border-b border-border bg-surface">
+            {Array.from({ length: 7 }, (_, index) => (
+              <div key={index} className="p-3">
+                <div className="mx-auto h-3 w-8 rounded-full bg-border" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {Array.from({ length: 35 }, (_, index) => (
+              <div key={index} className="min-h-[96px] border-b border-r border-border p-2">
+                <div className="h-7 w-7 rounded-full bg-border" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <span className="sr-only">Carregando...</span>
     </div>
   );
 }

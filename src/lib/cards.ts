@@ -117,9 +117,64 @@ export const CARD_GRADIENTS: [string, string][] = [
 ];
 
 export const ALL_CARDS_GRADIENT: [string, string] = ["#1e293b", "#0f172a"];
+export const CARD_CHART_COLORS = CARD_GRADIENTS.map(([color]) => color);
+export const ALL_CARDS_CHART_COLOR = ALL_CARDS_GRADIENT[0];
+export const UNCATEGORIZED_CHART_COLOR = "#94a3b8";
+
+function normalizedPaletteIndex(index: number, length: number): number {
+  return ((index % length) + length) % length;
+}
 
 export function cardGradient(index: number): [string, string] {
-  return CARD_GRADIENTS[index % CARD_GRADIENTS.length];
+  return CARD_GRADIENTS[normalizedPaletteIndex(index, CARD_GRADIENTS.length)];
+}
+
+export function cardChartColor(index: number): string {
+  return CARD_CHART_COLORS[
+    normalizedPaletteIndex(index, CARD_CHART_COLORS.length)
+  ];
+}
+
+export interface CardPaymentStats {
+  total: number;
+  purchaseCount: number;
+  installmentCount: number;
+}
+
+/** Resumo das parcelas que vencem no mês, considerando o escopo de cartões. */
+export function cardPaymentStatsInMonth(
+  purchases: CardPurchase[],
+  cards: CreditCard[],
+  year: number,
+  month0: number,
+  filterCardId?: string | null
+): CardPaymentStats {
+  const cardMap = new Map(cards.map((card) => [card.id, card]));
+  const purchaseIds = new Set<string>();
+  let installmentCount = 0;
+  let total = 0;
+
+  for (const purchase of purchases) {
+    if (filterCardId && purchase.credit_card_id !== filterCardId) continue;
+    const card = cardMap.get(purchase.credit_card_id);
+    if (!card) continue;
+
+    for (const line of installmentsForPurchaseWithCard(purchase, card)) {
+      const dueDate = parseISODate(line.dueDate);
+      if (dueDate.getFullYear() !== year || dueDate.getMonth() !== month0) {
+        continue;
+      }
+      purchaseIds.add(purchase.id);
+      installmentCount += 1;
+      total += line.amount;
+    }
+  }
+
+  return {
+    total: Math.round(total * 100) / 100,
+    purchaseCount: purchaseIds.size,
+    installmentCount,
+  };
 }
 
 export interface CategorySpend {
@@ -161,7 +216,7 @@ export function spendingByCategoryInMonth(
     result.push({
       id,
       name: cat?.name ?? "Sem categoria",
-      color: cat?.color ?? "#94a3b8",
+      color: cat?.color ?? UNCATEGORIZED_CHART_COLOR,
       total: Math.round(total * 100) / 100,
     });
   }
@@ -208,11 +263,10 @@ export function paymentsByMonthRange(
 
     const byCardArr = Array.from(byCard.entries()).map(([cardId, amount]) => {
       const card = cardMap.get(cardId)!;
-      const [c1] = cardGradient(cards.findIndex((c) => c.id === cardId));
       return {
         cardId,
         name: card.name,
-        color: c1,
+        color: cardChartColor(cards.findIndex((c) => c.id === cardId)),
         amount: Math.round(amount * 100) / 100,
       };
     });
