@@ -21,7 +21,7 @@ const KIND_LABEL: Record<CategoryKind, string> = {
 const PALETTE = [
   "#16a34a", "#22c55e", "#dc2626", "#f97316", "#7c3aed",
   "#0ea5e9", "#ec4899", "#eab308", "#84cc16", "#06b6d4",
-  "#6366f1", "#64748b",
+  "#6366f1", "#64748b", "#9A6B3F",
 ];
 
 export default function CategoriesPage() {
