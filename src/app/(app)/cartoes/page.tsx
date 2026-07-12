@@ -309,16 +309,16 @@ export default function CartoesPage() {
 function CardsPageSkeleton() {
   return (
     <div className="space-y-5" aria-label="Carregando cartões" aria-busy="true">
-      <div className="animate-pulse rounded-[24px] bg-slate-200/80 p-4 sm:p-6 lg:p-8">
+      <div className="animate-pulse rounded-[24px] bg-surface-strong p-4 sm:p-6 lg:p-8">
         <div className="grid items-center gap-8 lg:grid-cols-[minmax(320px,440px)_1fr]">
-          <div className="mx-auto aspect-[1.586/1] w-full max-w-[420px] rounded-[22px] bg-slate-300/80" />
+          <div className="mx-auto aspect-[1.586/1] w-full max-w-[420px] rounded-[22px] bg-border-strong" />
           <div className="hidden space-y-4 lg:block">
-            <div className="h-3 w-28 rounded-full bg-slate-300" />
-            <div className="h-9 w-48 rounded-lg bg-slate-300" />
-            <div className="h-12 w-64 rounded-lg bg-slate-300" />
+            <div className="h-3 w-28 rounded-full bg-border-strong" />
+            <div className="h-9 w-48 rounded-lg bg-border-strong" />
+            <div className="h-12 w-64 rounded-lg bg-border-strong" />
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="h-24 rounded-2xl bg-slate-300" />
-              <div className="h-24 rounded-2xl bg-slate-300" />
+              <div className="h-24 rounded-2xl bg-border-strong" />
+              <div className="h-24 rounded-2xl bg-border-strong" />
             </div>
           </div>
         </div>

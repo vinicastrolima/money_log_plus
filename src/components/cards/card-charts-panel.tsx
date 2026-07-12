@@ -83,7 +83,7 @@ function CurrencyTooltip({
   if (!active || items.length === 0) return null;
 
   return (
-    <div className="max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-white/95 p-3 text-xs shadow-lg backdrop-blur">
+    <div className="max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-card/95 p-3 text-xs shadow-lg backdrop-blur">
       {label !== undefined && label !== null && (
         <p className="mb-2 font-semibold text-foreground">{String(label)}</p>
       )}
@@ -264,7 +264,7 @@ export function CardChartsPanel({
 
       {noPaymentsInRange ? (
         <Card className="border-dashed bg-card/70 px-5 py-9 text-center shadow-none sm:py-11">
-          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-muted">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-surface text-muted">
             <ReceiptText size={21} aria-hidden="true" />
           </span>
           <h3 className="mt-3 text-sm font-semibold text-foreground">
@@ -289,7 +289,7 @@ export function CardChartsPanel({
                 <p className="mt-0.5 text-xs text-muted">Vencimentos em {selectedMonthLabel}</p>
               </div>
               {totalCategory > 0 && (
-                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-muted">
+                <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[11px] font-medium text-muted">
                   {byCategory.length} categoria{byCategory.length === 1 ? "" : "s"}
                 </span>
               )}

@@ -41,7 +41,7 @@ export function TransactionStatusDot({
   const cfg = TX_STATUS[status];
   return (
     <span
-      className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white", cfg.dot, className)}
+      className={cn("h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card", cfg.dot, className)}
       title={cfg.label}
     />
   );

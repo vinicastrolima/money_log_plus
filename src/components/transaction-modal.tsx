@@ -153,7 +153,7 @@ function TransactionModalContent({
                     onClick={() => setStatus(s)}
                     className={cn(
                       "flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
-                      active ? cfg.badge : "border-border text-muted hover:bg-slate-50"
+                      active ? cfg.badge : "border-border text-muted hover:bg-surface"
                     )}
                   >
                     <span className={cn("h-2.5 w-2.5 rounded-full", cfg.dot)} />
@@ -203,7 +203,7 @@ function TransactionModalContent({
             className={`h-10 rounded-lg border text-sm font-medium transition-colors cursor-pointer ${
               direction === "in"
                 ? "border-income bg-income-bg text-income"
-                : "border-border text-muted hover:bg-slate-50"
+                : "border-border text-muted hover:bg-surface"
             }`}
           >
             Entrou (+)
@@ -214,7 +214,7 @@ function TransactionModalContent({
             className={`h-10 rounded-lg border text-sm font-medium transition-colors cursor-pointer ${
               direction === "out"
                 ? "border-expense bg-expense-bg text-expense"
-                : "border-border text-muted hover:bg-slate-50"
+                : "border-border text-muted hover:bg-surface"
             }`}
           >
             Saiu (−)
@@ -275,7 +275,7 @@ function TransactionModalContent({
         </div>
 
         {direction === "out" && (
-          <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-slate-50">
+          <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-surface">
             <input
               type="checkbox"
               checked={isDaily}
@@ -308,7 +308,7 @@ function TransactionModalContent({
                   onClick={() => setStatus(s)}
                   className={cn(
                     "flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
-                    active ? cfg.badge : "border-border text-muted hover:bg-slate-50"
+                    active ? cfg.badge : "border-border text-muted hover:bg-surface"
                   )}
                 >
                   <span className={cn("h-2.5 w-2.5 rounded-full", cfg.dot)} />

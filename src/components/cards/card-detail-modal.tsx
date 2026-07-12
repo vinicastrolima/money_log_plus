@@ -322,8 +322,8 @@ function CardDetailModalContent({
             />
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-slate-50/80 p-3.5 sm:p-4">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-primary shadow-sm">
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3.5 sm:p-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-primary shadow-sm">
               <CalendarClock size={19} aria-hidden="true" />
             </span>
             <div className="min-w-0">
@@ -357,7 +357,7 @@ function CardDetailModalContent({
           ) : (
             <form
               onSubmit={handleSaveSettings}
-              className="space-y-4 rounded-2xl border border-border bg-slate-50/60 p-4"
+              className="space-y-4 rounded-2xl border border-border bg-surface p-4"
             >
               <div>
                 <p className="text-sm font-semibold">Configurações do cartão</p>
@@ -453,7 +453,7 @@ function CardDetailModalContent({
                 <h3 id="card-purchases-title" className="text-sm font-semibold">
                   Compras
                 </h3>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-muted">
+                <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-muted">
                   {purchases.length}
                 </span>
               </div>
@@ -472,7 +472,7 @@ function CardDetailModalContent({
 
             {purchases.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-5 py-8 text-center">
-                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-muted">
+                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-surface text-muted">
                   <ReceiptText size={20} aria-hidden="true" />
                 </span>
                 <p className="mt-3 text-sm font-medium">Nenhuma compra neste cartão</p>
@@ -562,7 +562,7 @@ function CardDetailModalContent({
                 <h3 id="card-subscriptions-title" className="text-sm font-semibold">
                   Assinaturas recorrentes
                 </h3>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-muted">
+                <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-muted">
                   {subscriptions.length}
                 </span>
               </div>
@@ -581,7 +581,7 @@ function CardDetailModalContent({
 
             {subscriptions.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-5 py-8 text-center">
-                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-muted">
+                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-surface text-muted">
                   <Repeat2 size={20} aria-hidden="true" />
                 </span>
                 <p className="mt-3 text-sm font-medium">Nenhuma assinatura neste cartão</p>
@@ -603,7 +603,7 @@ function CardDetailModalContent({
                       key={subscription.id}
                       className={cn(
                         "p-3.5 sm:p-4",
-                        !subscription.active && "bg-slate-50/80"
+                        !subscription.active && "bg-surface"
                       )}
                     >
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
@@ -611,7 +611,7 @@ function CardDetailModalContent({
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="truncate text-sm font-semibold">{subscription.description}</p>
                             {!subscription.active && (
-                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+                              <span className="rounded-full bg-surface-strong px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
                                 Pausada
                               </span>
                             )}
@@ -759,7 +759,7 @@ function CardDetailModalContent({
             </div>
           </div>
           <fieldset disabled={saving}>
-            <legend className="text-sm font-medium text-slate-700">Pagamento</legend>
+            <legend className="text-sm font-medium text-foreground/85">Pagamento</legend>
             <div className="mt-2 grid grid-cols-2 gap-2.5">
               {(["avista", "parcelado"] as const).map((type) => (
                 <button
@@ -772,7 +772,7 @@ function CardDetailModalContent({
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                     paymentType === type
                       ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted hover:bg-slate-50"
+                      : "border-border text-muted hover:bg-surface"
                   )}
                 >
                   {type === "avista" ? "À vista" : "Parcelado"}

@@ -7,21 +7,24 @@ export const TX_STATUS: Record<
   concluido: {
     label: "Concluído",
     dot: "bg-emerald-500",
-    badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    badge:
+      "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25",
     ring: "ring-emerald-400",
     border: "border-l-emerald-500",
   },
   pendente: {
     label: "Pendente",
     dot: "bg-amber-400",
-    badge: "bg-amber-50 text-amber-800 border-amber-200",
+    badge:
+      "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-400/15 dark:text-amber-200 dark:border-amber-400/25",
     ring: "ring-amber-400",
     border: "border-l-amber-400",
   },
   atrasado: {
     label: "Atrasado",
     dot: "bg-red-500",
-    badge: "bg-red-50 text-red-700 border-red-200",
+    badge:
+      "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/25",
     ring: "ring-red-400",
     border: "border-l-red-500",
   },

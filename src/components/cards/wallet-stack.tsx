@@ -370,7 +370,7 @@ function ScopeChip({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
         active
           ? "border-primary bg-primary text-white shadow-sm"
-          : "border-border bg-card text-foreground hover:border-slate-300 hover:bg-slate-50"
+          : "border-border bg-card text-foreground hover:border-border-strong hover:bg-surface"
       )}
     >
       {color && (

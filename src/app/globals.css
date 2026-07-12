@@ -29,6 +29,37 @@
   --shadow-float: 0 24px 64px rgba(15, 23, 42, 0.18);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #0e1421;
+    --foreground: #e7edf7;
+    --card: #151c2b;
+    --surface: #111827;
+    --surface-muted: #1e293b;
+    --surface-strong: #273449;
+    --muted: #95a3b8;
+    --border: #273449;
+    --border-strong: #3b4961;
+    --primary: #7aa2ff;
+    --primary-hover: #9ab8ff;
+    --primary-soft: #1c2d52;
+    --primary-foreground: #07111f;
+    --sidebar: #101725;
+    --income: #4ade80;
+    --income-bg: #0f2f21;
+    --expense: #fb7185;
+    --expense-bg: #3a1720;
+    --warning: #fbbf24;
+    --warning-bg: #35270c;
+    --ring: #93b4ff;
+    --overlay: rgba(2, 6, 23, 0.72);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.18),
+      0 16px 36px rgba(0, 0, 0, 0.22);
+    --shadow-float: 0 28px 72px rgba(0, 0, 0, 0.42);
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
