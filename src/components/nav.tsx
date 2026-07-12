@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CreditCard,
   Ellipsis,
+  HelpCircle,
   LayoutDashboard,
   List,
   LogOut,
@@ -16,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { openCurrentTutorial } from "@/components/app-tutorial";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -77,6 +79,11 @@ export function Nav({ userEmail }: NavProps) {
     } finally {
       setLoggingOut(false);
     }
+  }
+
+  function handleOpenTips() {
+    setMoreOpen(false);
+    window.requestAnimationFrame(() => openCurrentTutorial());
   }
 
   return (
@@ -163,6 +170,16 @@ export function Nav({ userEmail }: NavProps) {
         <div className="border-t border-border p-3 xl:p-4">
           <button
             type="button"
+            onClick={handleOpenTips}
+            className="mb-2 flex h-11 w-full items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:hidden"
+            aria-label="Ver dicas desta tela"
+            title="Dicas"
+          >
+            <HelpCircle size={19} />
+          </button>
+
+          <button
+            type="button"
             onClick={handleLogout}
             disabled={loggingOut}
             className="flex h-11 w-full items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:hidden"
@@ -178,6 +195,15 @@ export function Nav({ userEmail }: NavProps) {
               <p className="text-xs font-semibold text-foreground">Sua conta</p>
               <p className="truncate text-xs text-muted">{userEmail || "Money Log"}</p>
             </div>
+            <button
+              type="button"
+              onClick={handleOpenTips}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Ver dicas desta tela"
+              title="Dicas"
+            >
+              <HelpCircle size={17} />
+            </button>
             <button
               type="button"
               onClick={handleLogout}
@@ -265,6 +291,16 @@ export function Nav({ userEmail }: NavProps) {
               );
             })}
           </nav>
+
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            onClick={handleOpenTips}
+          >
+            <HelpCircle size={17} />
+            Ver dica desta tela
+          </Button>
 
           <Button
             type="button"
