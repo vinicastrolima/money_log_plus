@@ -210,6 +210,7 @@ export const CARD_GRADIENTS: [string, string][] = [
   ["#6366f1", "#3730a3"],
   ["#14b8a6", "#0f766e"],
   ["#e11d48", "#881337"],
+  ["#eab308", "#a16207"],
 ];
 
 /** Gradiente padrão ao criar um cartão novo (roxo). */
