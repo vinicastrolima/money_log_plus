@@ -6,11 +6,15 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Money Log",
     description:
       "Controle financeiro pessoal com calendário, cartões, categorias e orçamento diário",
+    id: "/",
     start_url: "/",
+    scope: "/",
     display: "standalone",
     background_color: "#f4f7fb",
     theme_color: "#f4f7fb",
     lang: "pt-BR",
+    categories: ["finance", "productivity"],
+    prefer_related_applications: false,
     icons: [
       {
         src: "/favicon.png",

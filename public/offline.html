@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f7fb" />
+    <title>Money Log — Sem conexão</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f4f7fb;
+        color: #162033;
+      }
+
+      body {
+        display: grid;
+        min-height: 100dvh;
+        margin: 0;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+
+      main {
+        width: min(100%, 420px);
+        padding: 32px;
+        border: 1px solid #dce4ee;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+        box-sizing: border-box;
+        text-align: center;
+      }
+
+      img {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+      }
+
+      h1 {
+        margin: 20px 0 8px;
+        font-size: 24px;
+      }
+
+      p {
+        margin: 0;
+        color: #65748b;
+        line-height: 1.6;
+      }
+
+      button {
+        margin-top: 24px;
+        padding: 12px 18px;
+        border: 0;
+        border-radius: 12px;
+        background: #2563eb;
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background: #0e1421;
+          color: #e7edf7;
+        }
+
+        main {
+          border-color: #273449;
+          background: #151c2b;
+        }
+
+        p {
+          color: #95a3b8;
+        }
+
+        button {
+          background: #7aa2ff;
+          color: #07111f;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icon-192.png" alt="" width="72" height="72" />
+      <h1>Você está sem conexão</h1>
+      <p>
+        O Money Log precisa de internet para carregar seus dados financeiros com
+        segurança. Reconecte-se e tente novamente.
+      </p>
+      <button type="button" onclick="window.location.reload()">
+        Tentar novamente
+      </button>
+    </main>
+  </body>
+</html>
