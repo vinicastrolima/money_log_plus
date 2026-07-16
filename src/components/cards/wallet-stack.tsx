@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cardClosingDay, creditCardGradient } from "@/lib/cards";
 import type { CreditCard } from "@/lib/types";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatDateBR } from "@/lib/utils";
 
 const CARD_RATIO = 1.586;
 const CARD_PEEK = 18;
@@ -20,6 +20,8 @@ const MAX_VISIBLE_CARDS = 3;
 export interface WalletCardData {
   card: CreditCard;
   openTotal: number;
+  nextPaymentTotal: number;
+  nextPaymentDate: string | null;
   purchaseCount: number;
   gradientIndex: number;
 }
@@ -71,14 +73,16 @@ export function WalletCardVisual({
 
         <span className="flex items-end justify-between gap-4">
           <span className="min-w-0">
-            <span className="block text-[11px] font-medium text-white/75">Em aberto</span>
+            <span className="block text-[11px] font-medium text-white/75">
+              Próxima fatura
+            </span>
             <span className="mt-0.5 block truncate text-[1.65rem] font-semibold leading-none tracking-tight tabular-nums sm:text-[1.85rem]">
-              {formatCurrency(data.openTotal)}
+              {formatCurrency(data.nextPaymentTotal)}
             </span>
             <span className="mt-2 block text-[11px] font-medium text-white/70 sm:text-xs">
-              Vence dia {data.card.due_day}
+              Em aberto {formatCurrency(data.openTotal)}
               <span className="mx-1.5 text-white/40">•</span>
-              Fecha dia {cardClosingDay(data.card)}
+              Vence dia {data.card.due_day}
               <span className="mx-1.5 text-white/40">•</span>
               {data.purchaseCount} compra{data.purchaseCount !== 1 ? "s" : ""}
             </span>
@@ -156,6 +160,10 @@ export function WalletDeck({
   const behindCount = visibleCards.length - 1;
   const hiddenCount = Math.max(0, cards.length - visibleCards.length);
   const allOpenTotal = cards.reduce((sum, item) => sum + item.openTotal, 0);
+  const allNextPaymentTotal = cards.reduce(
+    (sum, item) => sum + item.nextPaymentTotal,
+    0
+  );
 
   function selectCard(cardId: string) {
     setFrontId(cardId);
@@ -238,9 +246,18 @@ export function WalletDeck({
             <h2 className="mt-2 truncate text-2xl font-semibold tracking-tight xl:text-3xl">
               {frontCard.card.name}
             </h2>
-            <p className="mt-6 text-sm text-slate-400">Total em aberto</p>
+            <p className="mt-6 text-sm text-slate-400">Próxima fatura</p>
             <p className="mt-1 text-4xl font-semibold tracking-[-0.04em] tabular-nums xl:text-5xl">
-              {formatCurrency(frontCard.openTotal)}
+              {formatCurrency(frontCard.nextPaymentTotal)}
+            </p>
+            <p className="mt-2 text-sm text-slate-400">
+              Em aberto{" "}
+              <span className="font-medium text-slate-200 tabular-nums">
+                {formatCurrency(frontCard.openTotal)}
+              </span>
+              {frontCard.nextPaymentDate ? (
+                <> · vence {formatDateBR(frontCard.nextPaymentDate)}</>
+              ) : null}
             </p>
 
             <div className="mt-7 grid grid-cols-2 gap-3">
@@ -320,7 +337,8 @@ export function WalletDeck({
         <div>
           <p className="text-sm font-semibold text-foreground">Analisar faturas</p>
           <p className="text-xs text-muted">
-            {formatCurrency(allOpenTotal)} em aberto na carteira
+            {formatCurrency(allNextPaymentTotal)} na próxima fatura ·{" "}
+            {formatCurrency(allOpenTotal)} em aberto
           </p>
         </div>
         <div

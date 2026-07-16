@@ -36,6 +36,9 @@ alter table public.credit_cards
   add column if not exists color_start text not null default '#7c3aed';
 alter table public.credit_cards
   add column if not exists color_end text not null default '#4c1d95';
+alter table public.credit_cards
+  add column if not exists credit_limit numeric(14, 2)
+  check (credit_limit is null or credit_limit >= 0);
 
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),

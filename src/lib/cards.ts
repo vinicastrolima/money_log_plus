@@ -200,6 +200,21 @@ export function cardOpenTotal(
   return total;
 }
 
+/** Próxima fatura (compras + assinaturas) a partir de hoje. */
+export function cardNextPayment(
+  purchases: CardPurchase[],
+  card: CreditCard,
+  subscriptions: CardSubscription[] = [],
+  today: Date = new Date()
+): AggregatedCardPayment | null {
+  const todayStr = toISODate(today);
+  return (
+    aggregateByDueDate(purchases, card, subscriptions).find(
+      (payment) => payment.dueDate >= todayStr
+    ) ?? null
+  );
+}
+
 export const CARD_GRADIENTS: [string, string][] = [
   ["#262626", "#000000"],
   ["#7c3aed", "#4c1d95"],

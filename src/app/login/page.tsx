@@ -40,8 +40,7 @@ export default function LoginPage() {
         router.refresh();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao autenticar.";
-      setError(traduzErro(msg));
+      setError(traduzErro(getAuthErrorMessage(err)));
     } finally {
       setLoading(false);
     }
@@ -213,10 +212,21 @@ export default function LoginPage() {
   );
 }
 
+function getAuthErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const record = err as { message?: unknown; msg?: unknown };
+    if (typeof record.message === "string" && record.message) return record.message;
+    if (typeof record.msg === "string" && record.msg) return record.msg;
+  }
+  return "Erro ao autenticar.";
+}
+
 function traduzErro(msg: string): string {
   if (msg.includes("Invalid login credentials")) return "Email ou senha inválidos.";
   if (msg.includes("already registered")) return "Este email já está cadastrado.";
   if (msg.includes("Email not confirmed"))
     return "Confirme seu email antes de entrar.";
+  if (msg.includes("Database error")) return "Erro no servidor de autenticação. Tente novamente.";
   return msg;
 }

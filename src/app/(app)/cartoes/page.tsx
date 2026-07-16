@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
-import { CARD_GRADIENTS, DEFAULT_CARD_GRADIENT, cardOpenTotal, defaultClosingDay } from "@/lib/cards";
+import { CARD_GRADIENTS, DEFAULT_CARD_GRADIENT, cardNextPayment, cardOpenTotal, defaultClosingDay } from "@/lib/cards";
 
 export default function CartoesPage() {
   const {
@@ -47,6 +47,7 @@ export default function CartoesPage() {
   const [cardName, setCardName] = React.useState("");
   const [dueDay, setDueDay] = React.useState("10");
   const [closingDay, setClosingDay] = React.useState(String(defaultClosingDay(10)));
+  const [cardLimit, setCardLimit] = React.useState("");
   const [cardColors, setCardColors] = React.useState(DEFAULT_CARD_GRADIENT);
 
   const effectiveChartScope =
@@ -58,9 +59,12 @@ export default function CartoesPage() {
     return creditCards.map((card, i) => {
       const cardSubs = cardSubscriptions.filter((s) => s.credit_card_id === card.id);
       const cardPurch = cardPurchases.filter((p) => p.credit_card_id === card.id);
+      const next = cardNextPayment(cardPurch, card, cardSubs, new Date());
       return {
         card,
         openTotal: cardOpenTotal(cardPurch, card, new Date()),
+        nextPaymentTotal: next?.total ?? 0,
+        nextPaymentDate: next?.dueDate ?? null,
         purchaseCount: cardPurch.length,
         gradientIndex: i,
       };
@@ -94,8 +98,13 @@ export default function CartoesPage() {
     e.preventDefault();
     const day = Number(dueDay);
     const closeDay = Number(closingDay);
+    const limitRaw = cardLimit.trim();
+    const limitParsed = limitRaw
+      ? Number(limitRaw.replace(/\./g, "").replace(",", "."))
+      : null;
     if (!cardName.trim() || !Number.isInteger(day) || day < 1 || day > 31) return;
     if (!Number.isInteger(closeDay) || closeDay < 1 || closeDay > 31) return;
+    if (limitParsed !== null && (!Number.isFinite(limitParsed) || limitParsed < 0)) return;
     setSaving(true);
     try {
       await addCreditCard({
@@ -104,11 +113,13 @@ export default function CartoesPage() {
         closing_day: closeDay,
         color_start: cardColors[0],
         color_end: cardColors[1],
+        credit_limit: limitParsed,
       });
       setNewCardOpen(false);
       setCardName("");
       setDueDay("10");
       setClosingDay(String(defaultClosingDay(10)));
+      setCardLimit("");
       setCardColors(DEFAULT_CARD_GRADIENT);
     } finally {
       setSaving(false);
@@ -266,6 +277,16 @@ export default function CartoesPage() {
                 </option>
               ))}
             </Select>
+          </div>
+          <div>
+            <Label htmlFor="new-limit">Limite do cartão</Label>
+            <Input
+              id="new-limit"
+              inputMode="decimal"
+              value={cardLimit}
+              onChange={(e) => setCardLimit(e.target.value)}
+              placeholder="Opcional — ex: 5000"
+            />
           </div>
           <div>
             <Label>Cores do cartão</Label>

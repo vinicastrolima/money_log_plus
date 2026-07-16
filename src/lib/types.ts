@@ -34,6 +34,7 @@ export interface CreditCard {
   closing_day?: number | null;
   color_start?: string | null;
   color_end?: string | null;
+  credit_limit?: number | null;
   created_at: string;
 }
 
@@ -55,6 +56,7 @@ export interface CreditCardInput {
   closing_day: number;
   color_start: string;
   color_end: string;
+  credit_limit?: number | null;
 }
 
 export interface CardPurchaseInput {

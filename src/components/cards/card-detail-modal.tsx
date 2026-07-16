@@ -16,13 +16,13 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { WalletCardVisual } from "@/components/cards/wallet-stack";
 import {
   CARD_GRADIENTS,
-  aggregateByDueDate,
   cardClosingDay,
+  cardNextPayment,
   cardOpenTotal,
   splitInstallments,
 } from "@/lib/cards";
 import { cn, formatCurrency, formatDateBR, toISODate } from "@/lib/utils";
-import type { CardPurchase, CardSubscription, Category, CreditCard } from "@/lib/types";
+import type { CardPurchase, CardSubscription, Category, CreditCard, CreditCardInput } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -33,13 +33,7 @@ interface Props {
   subscriptions: CardSubscription[];
   categories: Category[];
   openPurchaseOnMount?: boolean;
-  onSaveCard: (input: {
-    name: string;
-    due_day: number;
-    closing_day: number;
-    color_start: string;
-    color_end: string;
-  }) => Promise<void>;
+  onSaveCard: (input: CreditCardInput) => Promise<void>;
   onDeleteCard: () => Promise<void>;
   onSavePurchase: (input: {
     id?: string;
@@ -93,6 +87,9 @@ function CardDetailModalContent({
   const [cardName, setCardName] = React.useState(card.name);
   const [dueDay, setDueDay] = React.useState(String(card.due_day));
   const [closingDay, setClosingDay] = React.useState(String(cardClosingDay(card)));
+  const [cardLimit, setCardLimit] = React.useState(
+    card.credit_limit != null ? String(card.credit_limit).replace(".", ",") : ""
+  );
   const [cardColors, setCardColors] = React.useState<[string, string]>(() => {
     const fallback = CARD_GRADIENTS[gradientIndex % CARD_GRADIENTS.length];
     return [card.color_start ?? fallback[0], card.color_end ?? fallback[1]];
@@ -150,8 +147,10 @@ function CardDetailModalContent({
   }, [defaultSubscriptionCategoryId]);
 
   const openTotal = cardOpenTotal(purchases, card, new Date());
-  const aggs = aggregateByDueDate(purchases, card, subscriptions);
-  const nextPayment = aggs.find((payment) => payment.dueDate >= toISODate(new Date()));
+  const nextPayment = cardNextPayment(purchases, card, subscriptions, new Date());
+  const creditLimit = card.credit_limit ?? null;
+  const availableLimit =
+    creditLimit != null ? Math.max(creditLimit - openTotal, 0) : null;
 
   function openNewPurchase() {
     resetPurchaseForm();
@@ -188,8 +187,13 @@ function CardDetailModalContent({
     event.preventDefault();
     const day = Number(dueDay);
     const closeDay = Number(closingDay);
+    const limitRaw = cardLimit.trim();
+    const limitParsed = limitRaw
+      ? Number(limitRaw.replace(/\./g, "").replace(",", "."))
+      : null;
     if (!cardName.trim() || !Number.isInteger(day) || day < 1 || day > 31) return;
     if (!Number.isInteger(closeDay) || closeDay < 1 || closeDay > 31) return;
+    if (limitParsed !== null && (!Number.isFinite(limitParsed) || limitParsed < 0)) return;
 
     setSaving(true);
     try {
@@ -199,6 +203,7 @@ function CardDetailModalContent({
         closing_day: closeDay,
         color_start: cardColors[0],
         color_end: cardColors[1],
+        credit_limit: limitParsed,
       });
       setEditingSettings(false);
     } finally {
@@ -316,6 +321,8 @@ function CardDetailModalContent({
               data={{
                 card,
                 openTotal,
+                nextPaymentTotal: nextPayment?.total ?? 0,
+                nextPaymentDate: nextPayment?.dueDate ?? null,
                 purchaseCount: purchases.length,
                 gradientIndex,
               }}
@@ -327,15 +334,24 @@ function CardDetailModalContent({
               <CalendarClock size={19} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-muted">Próximo pagamento</p>
-              {nextPayment ? (
-                <p className="mt-0.5 truncate text-sm font-semibold sm:text-base">
-                  {formatCurrency(nextPayment.total)}
-                  <span className="font-normal text-muted"> · {formatDateBR(nextPayment.dueDate)}</span>
+              <p className="text-xs font-medium text-muted">Em aberto</p>
+              <p className="mt-0.5 truncate text-sm font-semibold tabular-nums sm:text-base">
+                {formatCurrency(openTotal)}
+                {nextPayment ? (
+                  <span className="font-normal text-muted">
+                    {" "}
+                    · próxima {formatDateBR(nextPayment.dueDate)}
+                  </span>
+                ) : null}
+              </p>
+              {creditLimit != null ? (
+                <p className="mt-1 text-xs text-muted">
+                  Limite {formatCurrency(creditLimit)}
+                  {availableLimit != null ? (
+                    <> · disponível {formatCurrency(availableLimit)}</>
+                  ) : null}
                 </p>
-              ) : (
-                <p className="mt-0.5 text-sm font-medium">Nenhuma parcela futura</p>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -362,7 +378,7 @@ function CardDetailModalContent({
               <div>
                 <p className="text-sm font-semibold">Configurações do cartão</p>
                 <p className="mt-0.5 text-xs text-muted">
-                  Atualize nome, fechamento, vencimento e cores.
+                  Atualize nome, fechamento, vencimento, limite e cores.
                 </p>
               </div>
               <div>
@@ -407,6 +423,18 @@ function CardDetailModalContent({
                     </option>
                   ))}
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="detail-limit">Limite do cartão</Label>
+                <Input
+                  id="detail-limit"
+                  className="h-11"
+                  inputMode="decimal"
+                  value={cardLimit}
+                  onChange={(event) => setCardLimit(event.target.value)}
+                  placeholder="Opcional — ex: 5000"
+                  disabled={saving}
+                />
               </div>
               <div>
                 <Label>Cores do cartão</Label>
