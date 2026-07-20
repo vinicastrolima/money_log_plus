@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
+import { ToggleField } from "@/components/ui/toggle-field";
 import { useData } from "@/components/data-provider";
 import type {
   Direction,
@@ -266,7 +268,7 @@ function TransactionModalContent({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
+          <div className="min-w-0">
             <Label htmlFor="tx-amount">Valor (R$)</Label>
             <Input
               id="tx-amount"
@@ -276,12 +278,13 @@ function TransactionModalContent({
               placeholder="0,00"
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label htmlFor="tx-date">Data</Label>
             <Input
               id="tx-date"
               type="date"
               value={date}
+              className="min-w-0 max-w-full"
               onChange={(e) => {
                 const nextDate = e.target.value;
                 setRecurrence((current) =>
@@ -311,21 +314,14 @@ function TransactionModalContent({
         </div>
 
         {direction === "out" && (
-          <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-surface">
-            <input
-              type="checkbox"
-              checked={isDaily}
-              onChange={(e) => setIsDaily(e.target.checked)}
-              className="mt-0.5 h-4 w-4 cursor-pointer accent-[var(--primary)]"
-            />
-            <span className="text-sm">
-              <span className="font-medium">É gasto diário?</span>
-              <span className="block text-muted">
-                Marque se é um gasto do dia a dia (consome o limite de R$/dia).
-                Deixe desmarcado para contas já previstas (dívida, cartão...).
-              </span>
-            </span>
-          </label>
+          <ToggleField
+            checked={isDaily}
+            onCheckedChange={setIsDaily}
+            icon={CalendarDays}
+            title="Gasto diário"
+            description="Conta no limite diário."
+            ariaLabel="Ativar gasto diário"
+          />
         )}
 
         <RecurrenceEditor

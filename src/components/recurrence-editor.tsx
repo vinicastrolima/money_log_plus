@@ -5,6 +5,7 @@ import { CalendarClock, Check, ChevronRight, Repeat2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { ToggleField } from "@/components/ui/toggle-field";
 import {
   defaultCustomRecurrence,
   getRecurrenceSummary,
@@ -66,64 +67,29 @@ export function RecurrenceEditor({
 
   return (
     <>
-      <div
-        className={cn(
-          "overflow-hidden rounded-xl border transition-colors",
-          enabled ? "border-primary/30 bg-primary-soft/45" : "border-border bg-card"
-        )}
+      <ToggleField
+        checked={enabled}
+        onCheckedChange={onEnabledChange}
+        icon={Repeat2}
+        title="Recorrente"
+        description={`Repita esta ${editingSeries ? "série" : "movimentação"} automaticamente`}
+        ariaLabel="Ativar recorrência"
       >
-        <div className="flex items-center gap-3 p-3">
-          <span
-            className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-              enabled ? "bg-primary text-primary-foreground" : "bg-surface text-muted"
-            )}
-          >
-            <Repeat2 size={18} />
-          </span>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="flex w-full items-center gap-3 border-t border-primary/15 px-3 py-3 text-left transition-colors hover:bg-primary-soft/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+        >
+          <CalendarClock size={17} className="ml-1 shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold">Recorrente</span>
-            <span className="block text-xs text-muted">
-              Repita esta {editingSeries ? "série" : "movimentação"} automaticamente
+            <span className="block text-xs font-medium text-muted">Periodicidade</span>
+            <span className="block truncate text-sm font-semibold">
+              {getRecurrenceSummary(value)}
             </span>
           </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled}
-            aria-label="Ativar recorrência"
-            onClick={() => onEnabledChange(!enabled)}
-            className={cn(
-              "relative h-7 w-12 shrink-0 rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              enabled ? "bg-primary" : "bg-border-strong"
-            )}
-          >
-            <span
-              className={cn(
-                "block h-6 w-6 rounded-full bg-white shadow-sm transition-transform",
-                enabled && "translate-x-5"
-              )}
-            />
-          </button>
-        </div>
-
-        {enabled ? (
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="flex w-full items-center gap-3 border-t border-primary/15 px-3 py-3 text-left transition-colors hover:bg-primary-soft/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
-          >
-            <CalendarClock size={17} className="ml-1 shrink-0 text-primary" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium text-muted">Periodicidade</span>
-              <span className="block truncate text-sm font-semibold">
-                {getRecurrenceSummary(value)}
-              </span>
-            </span>
-            <ChevronRight size={18} className="shrink-0 text-muted" />
-          </button>
-        ) : null}
-      </div>
+          <ChevronRight size={18} className="shrink-0 text-muted" />
+        </button>
+      </ToggleField>
 
       {editingSeries && enabled ? (
         <p className="-mt-2 text-xs text-muted">
@@ -218,10 +184,17 @@ function CustomRecurrenceModal({
     week_days: value.week_days ? [...value.week_days] : undefined,
     month_days: value.month_days ? [...value.month_days] : undefined,
   }));
+  const [intervalInput, setIntervalInput] = React.useState(String(value.interval));
   const start = parseISODate(startDate);
+  const parsedInterval = Number(intervalInput);
+  const intervalValid =
+    intervalInput.trim() !== "" &&
+    Number.isInteger(parsedInterval) &&
+    parsedInterval >= 1 &&
+    parsedInterval <= 365;
 
   function changeFrequency(frequency: RecurrenceFrequency) {
-    const interval = Math.max(1, draft.interval || 1);
+    const interval = intervalValid ? parsedInterval : draft.interval;
     if (frequency === "daily") setDraft({ frequency, interval });
     if (frequency === "weekly") {
       setDraft({ frequency, interval, week_days: [start.getDay()] });
@@ -238,10 +211,10 @@ function CustomRecurrenceModal({
   }
 
   const intervalUnit = {
-    daily: draft.interval === 1 ? "dia" : "dias",
-    weekly: draft.interval === 1 ? "semana" : "semanas",
-    monthly: draft.interval === 1 ? "mês" : "meses",
-    yearly: draft.interval === 1 ? "ano" : "anos",
+    daily: parsedInterval === 1 ? "dia" : "dias",
+    weekly: parsedInterval === 1 ? "semana" : "semanas",
+    monthly: parsedInterval === 1 ? "mês" : "meses",
+    yearly: parsedInterval === 1 ? "ano" : "anos",
   }[draft.frequency];
 
   const valid =
@@ -278,17 +251,19 @@ function CustomRecurrenceModal({
               inputMode="numeric"
               min={1}
               max={365}
-              value={draft.interval}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  interval: Math.max(1, Math.min(365, Number(event.target.value) || 1)),
-                }))
-              }
+              value={intervalInput}
+              aria-invalid={!intervalValid}
+              aria-describedby={!intervalValid ? "recurrence-interval-error" : undefined}
+              onChange={(event) => setIntervalInput(event.target.value)}
               className="w-20 text-center font-semibold tabular-nums"
             />
             <span>{intervalUnit}</span>
           </div>
+          {!intervalValid ? (
+            <p id="recurrence-interval-error" className="mt-2 text-xs text-expense">
+              Informe um número entre 1 e 365.
+            </p>
+          ) : null}
         </div>
 
         {draft.frequency === "weekly" ? (
@@ -337,7 +312,11 @@ function CustomRecurrenceModal({
 
         <div className="rounded-xl bg-surface px-3 py-2.5 text-sm">
           <span className="text-muted">Resumo: </span>
-          <span className="font-semibold">{getRecurrenceSummary(draft)}</span>
+          <span className="font-semibold">
+            {intervalValid
+              ? getRecurrenceSummary({ ...draft, interval: parsedInterval })
+              : "Informe um intervalo válido."}
+          </span>
         </div>
 
         <div className="flex justify-end gap-2">
@@ -346,8 +325,8 @@ function CustomRecurrenceModal({
           </Button>
           <Button
             type="button"
-            disabled={!valid || !monthlyValid}
-            onClick={() => onConfirm(draft)}
+            disabled={!intervalValid || !valid || !monthlyValid}
+            onClick={() => onConfirm({ ...draft, interval: parsedInterval })}
           >
             Confirmar
           </Button>
