@@ -167,6 +167,7 @@ export default function DashboardPage() {
                             {formatDateBR(t.date)}
                             {cat ? ` · ${cat.name}` : ""}
                             {t.type === "diaria" ? " · diário" : ""}
+                            {t.recurrence_id ? " · recorrente" : ""}
                           </p>
                         </div>
                         <div className="hidden sm:block">

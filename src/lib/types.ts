@@ -2,6 +2,29 @@ export type Direction = "in" | "out";
 export type TxType = "prevista" | "diaria";
 export type TxStatus = "concluido" | "pendente" | "atrasado";
 export type CategoryKind = "income" | "expense" | "both";
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+export type MonthlyRecurrenceMode = "days" | "ordinal";
+export type MonthlyOrdinalTarget =
+  | "day"
+  | "weekday"
+  | "weekend"
+  | 0
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5
+  | 6;
+
+export interface RecurrenceConfig {
+  frequency: RecurrenceFrequency;
+  interval: number;
+  week_days?: number[];
+  month_mode?: MonthlyRecurrenceMode;
+  month_days?: number[];
+  month_ordinal?: 1 | 2 | 3 | 4 | -1;
+  month_ordinal_target?: MonthlyOrdinalTarget;
+}
 
 export interface Category {
   id: string;
@@ -23,6 +46,22 @@ export interface Transaction {
   type: TxType;
   status: TxStatus;
   credit_card_id: string | null;
+  recurrence_id: string | null;
+  created_at: string;
+}
+
+export interface RecurrenceRule {
+  id: string;
+  user_id: string;
+  start_date: string;
+  generated_until: string | null;
+  active: boolean;
+  description: string;
+  amount: number;
+  direction: Direction;
+  category_id: string | null;
+  type: TxType;
+  rule: RecurrenceConfig;
   created_at: string;
 }
 
@@ -107,4 +146,5 @@ export interface TransactionInput {
   category_id: string | null;
   type: TxType;
   status: TxStatus;
+  recurrence?: RecurrenceConfig | null;
 }

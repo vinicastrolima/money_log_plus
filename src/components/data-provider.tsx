@@ -3,6 +3,12 @@
 import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { syncCreditCardTransactions } from "@/lib/card-sync";
+import { suggestStatusForDate } from "@/lib/transaction-status";
+import {
+  buildRecurrenceDates,
+  getRecurrenceHorizon,
+  nextDate,
+} from "@/lib/recurrence";
 import type {
   CardPurchase,
   CardPurchaseInput,
@@ -11,20 +17,24 @@ import type {
   Category,
   CreditCard,
   CreditCardInput,
+  RecurrenceRule,
   Settings,
   Transaction,
   TransactionInput,
+  TxStatus,
 } from "@/lib/types";
 
 interface DataContextValue {
   loading: boolean;
   categories: Category[];
   transactions: Transaction[];
+  recurrenceRules: RecurrenceRule[];
   creditCards: CreditCard[];
   cardPurchases: CardPurchase[];
   cardSubscriptions: CardSubscription[];
   settings: Settings | null;
   categoryById: (id: string | null) => Category | null;
+  recurrenceById: (id: string | null) => RecurrenceRule | null;
   refresh: () => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
@@ -47,6 +57,18 @@ interface DataContextValue {
   deleteCardSubscription: (id: string) => Promise<void>;
 }
 
+interface MaterializeOptions {
+  startAt?: string;
+  firstStatus?: TxStatus;
+  includeStart?: boolean;
+}
+
+function transactionRow(input: TransactionInput) {
+  const row = { ...input };
+  delete row.recurrence;
+  return row;
+}
+
 const DataContext = React.createContext<DataContextValue | null>(null);
 
 export function useData() {
@@ -60,16 +82,67 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = React.useState(true);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [recurrenceRules, setRecurrenceRules] = React.useState<RecurrenceRule[]>([]);
   const [creditCards, setCreditCards] = React.useState<CreditCard[]>([]);
   const [cardPurchases, setCardPurchases] = React.useState<CardPurchase[]>([]);
   const [cardSubscriptions, setCardSubscriptions] = React.useState<CardSubscription[]>([]);
   const [settings, setSettings] = React.useState<Settings | null>(null);
 
+  const materializeRule = React.useCallback(
+    async (rule: RecurrenceRule, userId: string, options: MaterializeOptions = {}) => {
+      const horizon = getRecurrenceHorizon(rule.start_date);
+      const startAt =
+        options.startAt ??
+        (rule.generated_until ? nextDate(rule.generated_until) : rule.start_date);
+      if (startAt > horizon) return;
+
+      const scheduledDates = buildRecurrenceDates(
+        startAt,
+        horizon,
+        rule.rule,
+        rule.start_date
+      );
+      const dates = options.includeStart
+        ? [...new Set([startAt, ...scheduledDates])].sort()
+        : scheduledDates;
+      const rows = dates.map((date) => ({
+        user_id: userId,
+        date,
+        description: rule.description,
+        amount: rule.amount,
+        direction: rule.direction,
+        category_id: rule.category_id,
+        type: rule.type,
+        status:
+          options.firstStatus && date === startAt
+            ? options.firstStatus
+            : suggestStatusForDate(date),
+        credit_card_id: null,
+        recurrence_id: rule.id,
+      }));
+
+      if (rows.length) {
+        const { error } = await supabase.from("transactions").upsert(rows, {
+          onConflict: "recurrence_id,date",
+          ignoreDuplicates: true,
+        });
+        if (error) throw error;
+      }
+
+      const { error: ruleError } = await supabase
+        .from("recurrence_rules")
+        .update({ generated_until: horizon })
+        .eq("id", rule.id);
+      if (ruleError) throw ruleError;
+    },
+    [supabase]
+  );
+
   const load = React.useCallback(async () => {
-    const [catRes, txRes, cardRes, purchaseRes, subRes, setRes, userRes] =
+    const [catRes, ruleRes, cardRes, purchaseRes, subRes, setRes, userRes] =
       await Promise.all([
         supabase.from("categories").select("*").order("name"),
-        supabase.from("transactions").select("*").order("date", { ascending: false }),
+        supabase.from("recurrence_rules").select("*").order("created_at"),
         supabase.from("credit_cards").select("*").order("name"),
         supabase.from("card_purchases").select("*").order("purchase_date", { ascending: false }),
         supabase.from("card_subscriptions").select("*").order("description"),
@@ -77,8 +150,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         supabase.auth.getUser(),
       ]);
 
+    const rules = (ruleRes.data as RecurrenceRule[]) ?? [];
+    const userId = userRes.data.user?.id;
+    if (userId) {
+      await Promise.allSettled(
+        rules
+          .filter(
+            (rule) =>
+              rule.active &&
+              (!rule.generated_until ||
+                rule.generated_until < getRecurrenceHorizon(rule.start_date))
+          )
+          .map((rule) => materializeRule(rule, userId))
+      );
+    }
+
+    const txRes = await supabase
+      .from("transactions")
+      .select("*")
+      .order("date", { ascending: false });
+
     setCategories((catRes.data as Category[]) ?? []);
     setTransactions((txRes.data as Transaction[]) ?? []);
+    setRecurrenceRules(rules);
     setCreditCards((cardRes.data as CreditCard[]) ?? []);
     setCardPurchases((purchaseRes.data as CardPurchase[]) ?? []);
     setCardSubscriptions((subRes.data as CardSubscription[]) ?? []);
@@ -94,7 +188,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
     setSettings(s);
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, materializeRule]);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -149,37 +243,209 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async (input: TransactionInput) => {
       const userId = await getUserId();
       if (!userId) return;
-      const { error } = await supabase
-        .from("transactions")
-        .insert({ ...input, user_id: userId, credit_card_id: null });
+      const row = transactionRow(input);
+
+      if (!input.recurrence) {
+        const { error } = await supabase
+          .from("transactions")
+          .insert({ ...row, user_id: userId, credit_card_id: null, recurrence_id: null });
+        if (error) throw error;
+        await load();
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("recurrence_rules")
+        .insert({
+          user_id: userId,
+          start_date: input.date,
+          generated_until: null,
+          active: true,
+          description: input.description,
+          amount: input.amount,
+          direction: input.direction,
+          category_id: input.category_id,
+          type: input.type,
+          rule: input.recurrence,
+        })
+        .select()
+        .single();
       if (error) throw error;
+
+      try {
+        await materializeRule(data as RecurrenceRule, userId, {
+          startAt: input.date,
+          firstStatus: input.status,
+          includeStart: true,
+        });
+      } catch (materializeError) {
+        await supabase.from("recurrence_rules").delete().eq("id", data.id);
+        throw materializeError;
+      }
       await load();
     },
-    [supabase, getUserId, load]
+    [supabase, getUserId, load, materializeRule]
   );
 
   const updateTransaction = React.useCallback(
     async (id: string, input: TransactionInput) => {
       const existing = transactions.find((t) => t.id === id);
+      const row = transactionRow(input);
       if (existing?.credit_card_id) {
         const onlyStatus =
-          input.date === existing.date &&
-          input.description === existing.description &&
-          input.amount === existing.amount &&
-          input.direction === existing.direction &&
-          input.category_id === existing.category_id &&
-          input.type === existing.type;
+          row.date === existing.date &&
+          row.description === existing.description &&
+          row.amount === existing.amount &&
+          row.direction === existing.direction &&
+          row.category_id === existing.category_id &&
+          row.type === existing.type;
         if (!onlyStatus) {
           throw new Error(
             "Lançamentos automáticos de cartão devem ser editados na aba Cartões."
           );
         }
       }
-      const { error } = await supabase.from("transactions").update(input).eq("id", id);
+
+      const currentRule = existing?.recurrence_id
+        ? recurrenceRules.find((rule) => rule.id === existing.recurrence_id)
+        : null;
+
+      if (existing && currentRule) {
+        if (!input.recurrence) {
+          const { error: ruleError } = await supabase
+            .from("recurrence_rules")
+            .update({ active: false, generated_until: existing.date })
+            .eq("id", currentRule.id);
+          if (ruleError) throw ruleError;
+
+          const { error: futureError } = await supabase
+            .from("transactions")
+            .delete()
+            .eq("recurrence_id", currentRule.id)
+            .gt("date", existing.date);
+          if (futureError) throw futureError;
+
+          const { error: updateError } = await supabase
+            .from("transactions")
+            .update({ ...row, recurrence_id: null })
+            .eq("id", id);
+          if (updateError) throw updateError;
+          await load();
+          return;
+        }
+
+        const onlyThisOccurrenceChanged =
+          input.date === existing.date &&
+          input.description === currentRule.description &&
+          input.amount === currentRule.amount &&
+          input.direction === currentRule.direction &&
+          input.category_id === currentRule.category_id &&
+          input.type === currentRule.type &&
+          JSON.stringify(input.recurrence) === JSON.stringify(currentRule.rule);
+        if (onlyThisOccurrenceChanged) {
+          const { error: occurrenceError } = await supabase
+            .from("transactions")
+            .update(row)
+            .eq("id", id);
+          if (occurrenceError) throw occurrenceError;
+          await load();
+          return;
+        }
+
+        const userId = await getUserId();
+        if (!userId) return;
+        const cutoff = input.date < existing.date ? input.date : existing.date;
+        const { error: deleteError } = await supabase
+          .from("transactions")
+          .delete()
+          .eq("recurrence_id", currentRule.id)
+          .gte("date", cutoff);
+        if (deleteError) throw deleteError;
+
+        const { data: updatedRule, error: ruleError } = await supabase
+          .from("recurrence_rules")
+          .update({
+            start_date: input.date,
+            generated_until: null,
+            active: true,
+            description: input.description,
+            amount: input.amount,
+            direction: input.direction,
+            category_id: input.category_id,
+            type: input.type,
+            rule: input.recurrence,
+          })
+          .eq("id", currentRule.id)
+          .select()
+          .single();
+        if (ruleError) throw ruleError;
+
+        await materializeRule(updatedRule as RecurrenceRule, userId, {
+          startAt: input.date,
+          firstStatus: input.status,
+          includeStart: true,
+        });
+        await load();
+        return;
+      }
+
+      if (existing && input.recurrence) {
+        const userId = await getUserId();
+        if (!userId) return;
+        const { data: createdRule, error: ruleError } = await supabase
+          .from("recurrence_rules")
+          .insert({
+            user_id: userId,
+            start_date: input.date,
+            generated_until: null,
+            active: true,
+            description: input.description,
+            amount: input.amount,
+            direction: input.direction,
+            category_id: input.category_id,
+            type: input.type,
+            rule: input.recurrence,
+          })
+          .select()
+          .single();
+        if (ruleError) throw ruleError;
+
+        const { error: updateError } = await supabase
+          .from("transactions")
+          .update({ ...row, recurrence_id: createdRule.id })
+          .eq("id", id);
+        if (updateError) throw updateError;
+
+        try {
+          await materializeRule(createdRule as RecurrenceRule, userId, {
+            startAt: input.date,
+            firstStatus: input.status,
+            includeStart: true,
+          });
+        } catch (materializeError) {
+          await supabase
+            .from("transactions")
+            .update({ ...row, recurrence_id: null })
+            .eq("id", id);
+          await supabase.from("recurrence_rules").delete().eq("id", createdRule.id);
+          throw materializeError;
+        }
+        await load();
+        return;
+      }
+
+      const { error } = await supabase.from("transactions").update(row).eq("id", id);
       if (error) throw error;
       await load();
     },
-    [supabase, load, transactions]
+    [
+      supabase,
+      load,
+      transactions,
+      recurrenceRules,
+      getUserId,
+      materializeRule,
+    ]
   );
 
   const deleteTransaction = React.useCallback(
@@ -396,15 +662,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [categories]
   );
 
+  const recurrenceById = React.useCallback(
+    (id: string | null) => recurrenceRules.find((rule) => rule.id === id) ?? null,
+    [recurrenceRules]
+  );
+
   const value: DataContextValue = {
     loading,
     categories,
     transactions,
+    recurrenceRules,
     creditCards,
     cardPurchases,
     cardSubscriptions,
     settings,
     categoryById,
+    recurrenceById,
     refresh,
     addTransaction,
     updateTransaction,

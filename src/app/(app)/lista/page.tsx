@@ -235,6 +235,7 @@ export default function ListPage() {
                             {formatDateBR(t.date)}
                             {cat ? ` · ${cat.name}` : ""}
                             {t.type === "diaria" ? " · diário" : ""}
+                            {t.recurrence_id ? " · recorrente" : ""}
                           </p>
                         </div>
                         <div className="hidden sm:block">

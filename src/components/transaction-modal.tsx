@@ -2,11 +2,22 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { useData } from "@/components/data-provider";
-import type { Direction, Transaction, TxStatus, TxType } from "@/lib/types";
+import type {
+  Direction,
+  RecurrenceConfig,
+  Transaction,
+  TxStatus,
+  TxType,
+} from "@/lib/types";
+import {
+  alignRecurrenceWithDate,
+  recurrenceFromPreset,
+} from "@/lib/recurrence";
 import { TX_STATUS, TX_STATUS_ORDER, suggestStatusForDate } from "@/lib/transaction-status";
 import { toISODate, formatCurrency, formatDateBR } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -44,10 +55,16 @@ function TransactionModalContent({
   transaction,
   defaultDate,
 }: Omit<Props, "open">) {
-  const { categories, addTransaction, updateTransaction, deleteTransaction } =
-    useData();
+  const {
+    categories,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    recurrenceById,
+  } = useData();
 
   const initialDate = transaction?.date ?? defaultDate ?? toISODate(new Date());
+  const existingRecurrence = recurrenceById(transaction?.recurrence_id ?? null);
   const [date, setDate] = React.useState(initialDate);
   const [description, setDescription] = React.useState(
     transaction?.description ?? ""
@@ -66,6 +83,12 @@ function TransactionModalContent({
   );
   const [status, setStatus] = React.useState<TxStatus>(
     transaction?.status ?? suggestStatusForDate(initialDate)
+  );
+  const [isRecurring, setIsRecurring] = React.useState(
+    Boolean(existingRecurrence?.active)
+  );
+  const [recurrence, setRecurrence] = React.useState<RecurrenceConfig>(
+    existingRecurrence?.rule ?? recurrenceFromPreset("monthly", initialDate)
   );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -93,6 +116,7 @@ function TransactionModalContent({
       category_id: categoryId || null,
       type: (isDaily ? "diaria" : "prevista") as TxType,
       status,
+      recurrence: isRecurring ? recurrence : null,
     };
 
     setSaving(true);
@@ -109,7 +133,10 @@ function TransactionModalContent({
 
   async function handleDelete() {
     if (!transaction || isAutoCard) return;
-    if (!confirm("Excluir esta transação?")) return;
+    const message = transaction.recurrence_id
+      ? "Excluir apenas este lançamento? A recorrência continuará ativa."
+      : "Excluir esta transação?";
+    if (!confirm(message)) return;
     setSaving(true);
     try {
       await deleteTransaction(transaction.id);
@@ -123,7 +150,13 @@ function TransactionModalContent({
     <Modal
       open
       onClose={onClose}
-      title={transaction ? "Editar transação" : "Nova transação"}
+      title={
+        transaction
+          ? existingRecurrence?.active
+            ? "Editar recorrência"
+            : "Editar transação"
+          : "Nova transação"
+      }
     >
       {isAutoCard ? (
         <div className="space-y-4">
@@ -251,6 +284,9 @@ function TransactionModalContent({
               value={date}
               onChange={(e) => {
                 const nextDate = e.target.value;
+                setRecurrence((current) =>
+                  alignRecurrenceWithDate(current, date, nextDate)
+                );
                 setDate(nextDate);
                 if (!transaction) setStatus(suggestStatusForDate(nextDate));
               }}
@@ -291,6 +327,15 @@ function TransactionModalContent({
             </span>
           </label>
         )}
+
+        <RecurrenceEditor
+          enabled={isRecurring}
+          value={recurrence}
+          startDate={date}
+          editingSeries={Boolean(existingRecurrence?.active)}
+          onEnabledChange={setIsRecurring}
+          onChange={setRecurrence}
+        />
 
         <div>
           <Label>Status</Label>

@@ -244,6 +244,7 @@ export default function CalendarPage() {
                         <p className="text-xs text-muted">
                           {cat ? cat.name : "Sem categoria"}
                           {t.type === "diaria" ? " · diário" : ""}
+                          {t.recurrence_id ? " · recorrente" : ""}
                         </p>
                       </div>
                       <div className="hidden sm:block">

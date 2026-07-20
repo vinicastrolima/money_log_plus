@@ -40,6 +40,21 @@ alter table public.credit_cards
   add column if not exists credit_limit numeric(14, 2)
   check (credit_limit is null or credit_limit >= 0);
 
+create table if not exists public.recurrence_rules (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  start_date date not null,
+  generated_until date,
+  active boolean not null default true,
+  description text not null default '',
+  amount numeric(14, 2) not null check (amount > 0),
+  direction text not null check (direction in ('in', 'out')),
+  category_id uuid references public.categories (id) on delete set null,
+  type text not null default 'prevista' check (type in ('prevista', 'diaria')),
+  rule jsonb not null check (jsonb_typeof(rule) = 'object'),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -51,8 +66,13 @@ create table if not exists public.transactions (
   type text not null default 'prevista' check (type in ('prevista', 'diaria')),
   status text not null default 'pendente' check (status in ('concluido', 'pendente', 'atrasado')),
   credit_card_id uuid references public.credit_cards (id) on delete cascade,
+  recurrence_id uuid references public.recurrence_rules (id) on delete cascade,
   created_at timestamptz not null default now()
 );
+
+alter table public.transactions
+  add column if not exists recurrence_id uuid
+  references public.recurrence_rules (id) on delete cascade;
 
 create table if not exists public.card_purchases (
   id uuid primary key default gen_random_uuid(),
@@ -100,6 +120,10 @@ create index if not exists card_subscriptions_user_idx
   on public.card_subscriptions (user_id);
 create index if not exists transactions_credit_card_idx
   on public.transactions (credit_card_id) where credit_card_id is not null;
+create index if not exists recurrence_rules_user_idx
+  on public.recurrence_rules (user_id);
+create unique index if not exists transactions_recurrence_date_idx
+  on public.transactions (recurrence_id, date) where recurrence_id is not null;
 
 -- ------------------------------------------------------------
 -- Row Level Security (cada usuario ve apenas os proprios dados)
@@ -111,6 +135,7 @@ alter table public.settings enable row level security;
 alter table public.credit_cards enable row level security;
 alter table public.card_purchases enable row level security;
 alter table public.card_subscriptions enable row level security;
+alter table public.recurrence_rules enable row level security;
 
 -- categories
 drop policy if exists "categories_select_own" on public.categories;
@@ -138,6 +163,20 @@ create policy "transactions_update_own" on public.transactions
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "transactions_delete_own" on public.transactions;
 create policy "transactions_delete_own" on public.transactions
+  for delete using (auth.uid() = user_id);
+
+-- recurrence_rules
+drop policy if exists "recurrence_rules_select_own" on public.recurrence_rules;
+create policy "recurrence_rules_select_own" on public.recurrence_rules
+  for select using (auth.uid() = user_id);
+drop policy if exists "recurrence_rules_insert_own" on public.recurrence_rules;
+create policy "recurrence_rules_insert_own" on public.recurrence_rules
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "recurrence_rules_update_own" on public.recurrence_rules;
+create policy "recurrence_rules_update_own" on public.recurrence_rules
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "recurrence_rules_delete_own" on public.recurrence_rules;
+create policy "recurrence_rules_delete_own" on public.recurrence_rules
   for delete using (auth.uid() = user_id);
 
 -- credit_cards
