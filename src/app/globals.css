@@ -132,6 +132,23 @@
 }
 
 @layer utilities {
+  /*
+   * iOS WebKit 26 can add a date/time input's horizontal padding on top of
+   * width: 100%, which makes grids and scrollable modals overflow sideways.
+   * Keep the padding on the internal value instead of the native control.
+   */
+  @supports (-webkit-touch-callout: none) {
+    .native-date-time-input {
+      padding-inline: 0;
+    }
+
+    .native-date-time-input::-webkit-date-and-time-value {
+      box-sizing: border-box;
+      padding-inline: 0.875rem;
+      text-align: left;
+    }
+  }
+
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;

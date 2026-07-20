@@ -1,15 +1,25 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+const DATE_TIME_INPUT_TYPES = new Set([
+  "date",
+  "datetime-local",
+  "month",
+  "time",
+  "week",
+]);
+
 export const Input = React.forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement>
->(({ className, ...props }, ref) => {
+>(({ className, type, ...props }, ref) => {
   return (
     <input
       ref={ref}
+      type={type}
       className={cn(
         "h-11 min-w-0 max-w-full w-full rounded-xl border border-border-strong bg-card px-3.5 text-base text-foreground shadow-[0_1px_1px_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-muted/80 focus:border-primary focus:ring-2 focus:ring-ring/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-expense aria-invalid:ring-expense/20",
+        DATE_TIME_INPUT_TYPES.has(type ?? "") && "native-date-time-input",
         className
       )}
       {...props}

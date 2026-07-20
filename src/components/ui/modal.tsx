@@ -149,7 +149,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         aria-label={title ? undefined : "Janela de diálogo"}
         tabIndex={-1}
         className={cn(
-          "card w-full max-w-lg overflow-y-auto rounded-b-none rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-float)] outline-none sm:max-h-[90dvh] sm:rounded-2xl sm:p-6",
+          "card w-full max-w-lg overflow-x-hidden overflow-y-auto rounded-b-none rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-float)] outline-none sm:max-h-[90dvh] sm:rounded-2xl sm:p-6",
           "max-h-[94dvh]",
           className
         )}
