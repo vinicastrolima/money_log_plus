@@ -171,7 +171,7 @@ export function Modal({
     <div
       data-modal-overlay
       className={cn(
-        "fixed inset-0 z-[60] flex items-end justify-center overflow-clip bg-[var(--overlay)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] backdrop-blur-[2px] sm:items-center sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] sm:pt-[max(1.5rem,env(safe-area-inset-top))]",
+        "fixed inset-0 z-[60] flex items-end justify-center overflow-hidden bg-[var(--overlay)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] backdrop-blur-[2px] sm:items-center sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] sm:pt-[max(1.5rem,env(safe-area-inset-top))]",
         inactive && "pointer-events-none"
       )}
       onMouseDown={(event) => {
@@ -193,54 +193,39 @@ export function Modal({
         aria-label={title ? undefined : "Janela de diálogo"}
         inert={inactive ? true : undefined}
         tabIndex={-1}
+        data-modal-scroll-region
         className={cn(
-          "card max-h-[min(94dvh,100%)] w-full min-w-0 max-w-lg overflow-clip rounded-b-none rounded-t-3xl shadow-[var(--shadow-float)] outline-none sm:max-h-[min(90dvh,100%)] sm:rounded-2xl",
+          "card max-h-[min(94dvh,100%)] w-full min-w-0 max-w-lg touch-pan-y overflow-x-hidden overflow-y-auto overscroll-x-none overscroll-y-contain rounded-b-none rounded-t-3xl shadow-[var(--shadow-float)] outline-none sm:max-h-[min(90dvh,100%)] sm:rounded-2xl",
           className
         )}
       >
         <div
-          data-modal-scroll-region
-          className="max-h-[inherit] w-full min-w-0 overflow-y-auto overscroll-y-contain touch-pan-y"
-          onScroll={(event) => {
-            if (event.currentTarget.scrollLeft !== 0) {
-              event.currentTarget.scrollLeft = 0;
-            }
-          }}
-          onFocusCapture={(event) => {
-            const scrollRegion = event.currentTarget;
-            if (scrollRegion.scrollLeft !== 0) {
-              scrollRegion.scrollLeft = 0;
-            }
-          }}
+          className={cn(
+            "w-full min-w-0 px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]",
+            contentClassName
+          )}
         >
-          <div
-            className={cn(
-              "w-full min-w-0 overflow-clip px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]",
-              contentClassName
-            )}
-          >
-            <div className="mb-5 flex min-w-0 items-center justify-between gap-3">
-              {title ? (
-                <h2
-                  id={titleId}
-                  className="min-w-0 truncate text-lg font-semibold tracking-[-0.015em]"
-                >
-                  {title}
-                </h2>
-              ) : (
-                <span />
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                aria-label="Fechar"
+          <div className="mb-5 flex min-w-0 items-center justify-between gap-3">
+            {title ? (
+              <h2
+                id={titleId}
+                className="min-w-0 truncate text-lg font-semibold tracking-[-0.015em]"
               >
-                <X size={18} />
-              </button>
-            </div>
-            {children}
+                {title}
+              </h2>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Fechar"
+            >
+              <X size={18} />
+            </button>
           </div>
+          {children}
         </div>
       </div>
     </div>

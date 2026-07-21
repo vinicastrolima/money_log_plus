@@ -361,7 +361,7 @@ function TransactionModalContent({
 
         {error && <p className="text-sm text-expense">{error}</p>}
 
-        <div className="flex items-center justify-between pt-1">
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 border-t border-border bg-card/95 py-3 shadow-[0_-10px_24px_-20px_rgba(15,23,42,0.45)] backdrop-blur-sm">
           {transaction ? (
             <Button
               type="button"
@@ -375,7 +375,7 @@ function TransactionModalContent({
           ) : (
             <span />
           )}
-          <div className="flex gap-2">
+          <div className="ml-auto flex gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancelar
             </Button>

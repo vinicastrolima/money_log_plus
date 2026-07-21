@@ -129,8 +129,10 @@ create index if not exists transactions_credit_card_idx
   on public.transactions (credit_card_id) where credit_card_id is not null;
 create index if not exists recurrence_rules_user_idx
   on public.recurrence_rules (user_id);
-create unique index if not exists transactions_recurrence_date_idx
-  on public.transactions (recurrence_id, date) where recurrence_id is not null;
+alter table public.transactions
+  drop constraint if exists transactions_recurrence_date_key;
+alter table public.transactions
+  add constraint transactions_recurrence_date_key unique (recurrence_id, date);
 create index if not exists financial_assistant_requests_user_created_idx
   on public.financial_assistant_requests (user_id, created_at desc);
 
