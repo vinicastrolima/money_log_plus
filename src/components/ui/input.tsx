@@ -1,25 +1,15 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-const DATE_TIME_INPUT_TYPES = new Set([
-  "date",
-  "datetime-local",
-  "month",
-  "time",
-  "week",
-]);
-
 export const Input = React.forwardRef<
   HTMLInputElement,
   React.InputHTMLAttributes<HTMLInputElement>
->(({ className, type, ...props }, ref) => {
+>(({ className, ...props }, ref) => {
   return (
     <input
       ref={ref}
-      type={type}
       className={cn(
         "h-11 min-w-0 max-w-full w-full rounded-xl border border-border-strong bg-card px-3.5 text-base text-foreground shadow-[0_1px_1px_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-muted/80 focus:border-primary focus:ring-2 focus:ring-ring/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-expense aria-invalid:ring-expense/20",
-        DATE_TIME_INPUT_TYPES.has(type ?? "") && "native-date-time-input",
         className
       )}
       {...props}
@@ -27,6 +17,34 @@ export const Input = React.forwardRef<
   );
 });
 Input.displayName = "Input";
+
+export const DateInput = React.forwardRef<
+  HTMLInputElement,
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "type">
+>(({ className, disabled, "aria-invalid": ariaInvalid, ...props }, ref) => {
+  const invalid = ariaInvalid === true || ariaInvalid === "true";
+
+  return (
+    <span
+      className={cn(
+        "flex h-11 min-w-0 max-w-full w-full items-center overflow-clip rounded-xl border border-border-strong bg-card px-3.5 shadow-[0_1px_1px_rgba(15,23,42,0.02)] transition-[border-color,box-shadow,background-color] focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/35",
+        disabled && "cursor-not-allowed bg-surface-muted text-muted",
+        invalid && "border-expense ring-2 ring-expense/20",
+        className
+      )}
+    >
+      <input
+        ref={ref}
+        type="date"
+        disabled={disabled}
+        aria-invalid={ariaInvalid}
+        className="native-date-input-control block h-full min-w-0 max-w-full w-full flex-1 border-0 bg-transparent p-0 text-base text-foreground outline-none disabled:cursor-not-allowed disabled:text-muted"
+        {...props}
+      />
+    </span>
+  );
+});
+DateInput.displayName = "DateInput";
 
 export const Select = React.forwardRef<
   HTMLSelectElement,
@@ -36,7 +54,7 @@ export const Select = React.forwardRef<
     <select
       ref={ref}
       className={cn(
-        "h-11 w-full rounded-xl border border-border-strong bg-card px-3.5 text-base text-foreground shadow-[0_1px_1px_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] focus:border-primary focus:ring-2 focus:ring-ring/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-expense aria-invalid:ring-expense/20",
+        "h-11 min-w-0 max-w-full w-full rounded-xl border border-border-strong bg-card px-3.5 text-base text-foreground shadow-[0_1px_1px_rgba(15,23,42,0.02)] outline-none transition-[border-color,box-shadow,background-color] focus:border-primary focus:ring-2 focus:ring-ring/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-expense aria-invalid:ring-expense/20",
         className
       )}
       {...props}

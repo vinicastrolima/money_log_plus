@@ -404,7 +404,12 @@ function MonthlyOptions({
         >
           <Radio active={mode === "ordinal"} /> Em uma posição do mês
         </button>
-        <div className={cn("grid grid-cols-2 gap-2", mode !== "ordinal" && "opacity-45")}>
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-2 sm:grid-cols-2",
+            mode !== "ordinal" && "opacity-45"
+          )}
+        >
           <Select
             aria-label="Posição no mês"
             disabled={mode !== "ordinal"}

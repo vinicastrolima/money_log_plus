@@ -14,6 +14,7 @@ const FOCUSABLE_SELECTOR = [
 ].join(",");
 
 let modalStack: string[] = [];
+const modalDialogs = new Map<string, HTMLElement>();
 let scrollLockCount = 0;
 let previousBodyOverflow = "";
 
@@ -38,9 +39,19 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   className?: string;
+  contentClassName?: string;
+  inactive?: boolean;
 }
 
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+  contentClassName,
+  inactive = false,
+}: ModalProps) {
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
   const onCloseRef = React.useRef(onClose);
@@ -56,17 +67,10 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
     modalStack.push(modalId);
+    if (dialogRef.current) {
+      modalDialogs.set(modalId, dialogRef.current);
+    }
     lockBodyScroll();
-
-    const frame = window.requestAnimationFrame(() => {
-      const dialog = dialogRef.current;
-      if (!dialog) return;
-      if (dialog.contains(document.activeElement)) return;
-      const preferred = dialog.querySelector<HTMLElement>(
-        "[autofocus], [data-autofocus]"
-      );
-      (preferred ?? dialog).focus({ preventScroll: true });
-    });
 
     const onKey = (event: KeyboardEvent) => {
       const isTopModal = modalStack[modalStack.length - 1] === modalId;
@@ -115,25 +119,64 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 
     document.addEventListener("keydown", onKey);
     return () => {
-      window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKey);
       modalStack = modalStack.filter((id) => id !== modalId);
+      modalDialogs.delete(modalId);
       unlockBodyScroll();
 
       const previousFocus = previousFocusRef.current;
-      if (previousFocus?.isConnected) {
-        window.requestAnimationFrame(() => previousFocus.focus());
-      }
+      window.requestAnimationFrame(() => {
+        const topModalId = modalStack[modalStack.length - 1];
+        const topDialog = topModalId ? modalDialogs.get(topModalId) : null;
+
+        if (topDialog && !topDialog.hasAttribute("inert")) {
+          if (previousFocus?.isConnected && topDialog.contains(previousFocus)) {
+            previousFocus.focus({ preventScroll: true });
+            return;
+          }
+
+          const preferred = topDialog.querySelector<HTMLElement>(
+            "[autofocus], [data-autofocus]"
+          );
+          (preferred ?? topDialog).focus({ preventScroll: true });
+          return;
+        }
+
+        if (previousFocus?.isConnected) {
+          previousFocus.focus({ preventScroll: true });
+        }
+      });
     };
   }, [open, modalId]);
+
+  React.useEffect(() => {
+    if (!open || inactive) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      if (!dialog || modalStack[modalStack.length - 1] !== modalId) return;
+      if (dialog.contains(document.activeElement)) return;
+      const preferred = dialog.querySelector<HTMLElement>(
+        "[autofocus], [data-autofocus]"
+      );
+      (preferred ?? dialog).focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [inactive, modalId, open]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-[var(--overlay)] p-0 backdrop-blur-[2px] sm:items-center sm:p-6"
+      data-modal-overlay
+      className={cn(
+        "fixed inset-0 z-[60] flex items-end justify-center overflow-clip bg-[var(--overlay)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] backdrop-blur-[2px] sm:items-center sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] sm:pt-[max(1.5rem,env(safe-area-inset-top))]",
+        inactive && "pointer-events-none"
+      )}
       onMouseDown={(event) => {
         if (
+          !inactive &&
           event.target === event.currentTarget &&
           modalStack[modalStack.length - 1] === modalId
         ) {
@@ -144,34 +187,61 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       <div
         ref={dialogRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={inactive ? undefined : true}
+        aria-hidden={inactive || undefined}
         aria-labelledby={title ? titleId : undefined}
         aria-label={title ? undefined : "Janela de diálogo"}
+        inert={inactive ? true : undefined}
         tabIndex={-1}
         className={cn(
-          "card w-full max-w-lg overflow-x-hidden overflow-y-auto rounded-b-none rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-float)] outline-none sm:max-h-[90dvh] sm:rounded-2xl sm:p-6",
-          "max-h-[94dvh]",
+          "card max-h-[min(94dvh,100%)] w-full min-w-0 max-w-lg overflow-clip rounded-b-none rounded-t-3xl shadow-[var(--shadow-float)] outline-none sm:max-h-[min(90dvh,100%)] sm:rounded-2xl",
           className
         )}
       >
-        <div className="mb-5 flex items-center justify-between gap-3">
-          {title ? (
-            <h2 id={titleId} className="text-lg font-semibold tracking-[-0.015em]">
-              {title}
-            </h2>
-          ) : (
-            <span />
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="Fechar"
+        <div
+          data-modal-scroll-region
+          className="max-h-[inherit] w-full min-w-0 overflow-y-auto overscroll-y-contain touch-pan-y"
+          onScroll={(event) => {
+            if (event.currentTarget.scrollLeft !== 0) {
+              event.currentTarget.scrollLeft = 0;
+            }
+          }}
+          onFocusCapture={(event) => {
+            const scrollRegion = event.currentTarget;
+            if (scrollRegion.scrollLeft !== 0) {
+              scrollRegion.scrollLeft = 0;
+            }
+          }}
+        >
+          <div
+            className={cn(
+              "w-full min-w-0 overflow-clip px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]",
+              contentClassName
+            )}
           >
-            <X size={18} />
-          </button>
+            <div className="mb-5 flex min-w-0 items-center justify-between gap-3">
+              {title ? (
+                <h2
+                  id={titleId}
+                  className="min-w-0 truncate text-lg font-semibold tracking-[-0.015em]"
+                >
+                  {title}
+                </h2>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {children}
+          </div>
         </div>
-        {children}
       </div>
     </div>
   );

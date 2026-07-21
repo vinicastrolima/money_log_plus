@@ -244,7 +244,7 @@ export default function CartoesPage() {
               value={cardName}
               onChange={(e) => setCardName(e.target.value)}
               placeholder="Ex: Nubank, Itaú..."
-              autoFocus
+              data-autofocus
             />
           </div>
           <div>

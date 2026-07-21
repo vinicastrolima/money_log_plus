@@ -241,7 +241,7 @@ export default function CalendarPage() {
                         <p className="truncate text-sm font-medium">
                           {t.description}
                         </p>
-                        <p className="text-xs text-muted">
+                        <p className="truncate text-xs text-muted">
                           {cat ? cat.name : "Sem categoria"}
                           {t.type === "diaria" ? " · diário" : ""}
                           {t.recurrence_id ? " · recorrente" : ""}

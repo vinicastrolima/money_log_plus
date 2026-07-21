@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { DateInput, Input, Label, Select } from "@/components/ui/input";
 import { WalletCardVisual } from "@/components/cards/wallet-stack";
 import {
   CARD_GRADIENTS,
@@ -114,6 +114,7 @@ function CardDetailModalContent({
   const [subscriptionDate, setSubscriptionDate] = React.useState(toISODate(new Date()));
   const [subscriptionCategoryId, setSubscriptionCategoryId] = React.useState("");
   const [subscriptionActive, setSubscriptionActive] = React.useState(true);
+  const nestedModalOpen = purchaseModalOpen || subscriptionModalOpen;
 
   const expenseCategories = React.useMemo(
     () => categories.filter((category) => category.kind === "expense" || category.kind === "both"),
@@ -313,7 +314,9 @@ function CardDetailModalContent({
         open={open}
         onClose={onClose}
         title={card.name}
-        className="max-w-2xl p-4 sm:max-h-[calc(100dvh-2rem)] sm:p-6"
+        inactive={nestedModalOpen}
+        className="max-w-2xl"
+        contentClassName="px-4 pt-4 sm:px-6 sm:pt-6"
       >
         <div className="space-y-5">
           <div className="mx-auto w-full max-w-sm">
@@ -723,12 +726,13 @@ function CardDetailModalContent({
       </Modal>
 
       <Modal
-        open={purchaseModalOpen}
+        open={open && purchaseModalOpen}
         onClose={() => setPurchaseModalOpen(false)}
         title={editingPurchase ? "Editar compra" : "Nova compra"}
-        className="max-w-xl p-4 sm:p-6"
+        className="max-w-xl"
+        contentClassName="px-4 pt-4 sm:px-6 sm:pt-6"
       >
-        <form onSubmit={handleSavePurchase} className="space-y-4">
+        <form onSubmit={handleSavePurchase} className="w-full min-w-0 max-w-full space-y-4">
           <div>
             <Label htmlFor="p-desc">Descrição</Label>
             <Input
@@ -738,7 +742,7 @@ function CardDetailModalContent({
               onChange={(event) => setPurchaseDesc(event.target.value)}
               placeholder="Ex: Notebook, mercado..."
               disabled={saving}
-              autoFocus
+              data-autofocus
               required
             />
           </div>
@@ -760,7 +764,7 @@ function CardDetailModalContent({
             </Select>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+            <div className="min-w-0">
               <Label htmlFor="p-amount">Valor total (R$)</Label>
               <Input
                 id="p-amount"
@@ -773,12 +777,11 @@ function CardDetailModalContent({
                 required
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <Label htmlFor="p-date">Data da compra</Label>
-              <Input
+              <DateInput
                 id="p-date"
                 className="h-11"
-                type="date"
                 value={purchaseDate}
                 onChange={(event) => setPurchaseDate(event.target.value)}
                 disabled={saving}
@@ -844,12 +847,13 @@ function CardDetailModalContent({
       </Modal>
 
       <Modal
-        open={subscriptionModalOpen}
+        open={open && subscriptionModalOpen}
         onClose={() => setSubscriptionModalOpen(false)}
         title={editingSubscription ? "Editar assinatura" : "Nova assinatura"}
-        className="max-w-xl p-4 sm:p-6"
+        className="max-w-xl"
+        contentClassName="px-4 pt-4 sm:px-6 sm:pt-6"
       >
-        <form onSubmit={handleSaveSubscription} className="space-y-4">
+        <form onSubmit={handleSaveSubscription} className="w-full min-w-0 max-w-full space-y-4">
           <p className="text-xs leading-relaxed text-muted">
             A cobrança se repete todo mês na fatura, com o mesmo valor, a partir da data de início.
           </p>
@@ -862,7 +866,7 @@ function CardDetailModalContent({
               onChange={(event) => setSubscriptionDesc(event.target.value)}
               placeholder="Ex: ChatGPT, HBO Max..."
               disabled={saving}
-              autoFocus
+              data-autofocus
               required
             />
           </div>
@@ -884,7 +888,7 @@ function CardDetailModalContent({
             </Select>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+            <div className="min-w-0">
               <Label htmlFor="s-amount">Valor mensal (R$)</Label>
               <Input
                 id="s-amount"
@@ -897,12 +901,11 @@ function CardDetailModalContent({
                 required
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <Label htmlFor="s-date">Primeira cobrança</Label>
-              <Input
+              <DateInput
                 id="s-date"
                 className="h-11"
-                type="date"
                 value={subscriptionDate}
                 onChange={(event) => setSubscriptionDate(event.target.value)}
                 disabled={saving}

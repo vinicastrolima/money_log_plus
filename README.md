@@ -12,6 +12,7 @@ Aplicação web para organizar finanças pessoais, acompanhar o orçamento do m�
 - Categorias personalizadas com nome, cor e tipo.
 - Cartões de crédito com limite, fechamento, vencimento, compras parceladas e assinaturas.
 - Gráficos por categoria, tipo de gasto, período e cartão.
+- Assistente financeiro com IA para analisar gastos, tendências e oportunidades de economia.
 - Layout responsivo e instalável como PWA, com uma tela de aviso quando estiver offline.
 - Tutorial integrado em cada área do aplicativo.
 
@@ -46,6 +47,7 @@ Para executar localmente, você precisa de:
 - [Node.js 20.9 ou superior](https://nodejs.org/);
 - npm, incluído na instalação do Node.js;
 - uma conta gratuita no [Supabase](https://supabase.com/).
+- uma conta na [OpenAI Platform](https://platform.openai.com/) para habilitar o assistente financeiro.
 
 Para publicar, você também precisa de:
 
@@ -101,6 +103,8 @@ Projetos mais antigos também podem mostrar uma chave legada chamada **anon**. A
 
 > Nunca use uma **Secret key** ou a chave `service_role`. Elas ignoram as políticas RLS e não podem ser expostas no navegador.
 
+Se o projeto Supabase já existia antes da inclusão do assistente financeiro, execute também o arquivo [`supabase/migrations/20260720000000_financial_assistant_rate_limit.sql`](supabase/migrations/20260720000000_financial_assistant_rate_limit.sql) no **SQL Editor**. Ele cria apenas o controle de 20 análises por usuário a cada hora; perguntas, respostas e dados financeiros não são armazenados nessa tabela.
+
 ### 4. Configure as variáveis de ambiente
 
 Na raiz do projeto, crie seu arquivo local a partir do exemplo:
@@ -114,14 +118,20 @@ Edite `.env.local` e substitua os valores:
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_SUA_CHAVE_PUBLICA
+OPENAI_API_KEY=sk-proj-SUA_CHAVE_OPENAI
+OPENAI_FINANCIAL_MODEL=gpt-5-nano-2025-08-07
+FINANCIAL_ASSISTANT_TIME_ZONE=America/Maceio
 ```
 
 | Variável | Valor esperado |
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | URL pública do projeto Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key ou chave legada `anon` |
+| `OPENAI_API_KEY` | Chave secreta da OpenAI, disponível somente no servidor |
+| `OPENAI_FINANCIAL_MODEL` | Modelo do assistente; por padrão, o snapshot econômico `gpt-5-nano-2025-08-07` |
+| `FINANCIAL_ASSISTANT_TIME_ZONE` | Fuso usado para determinar o mês atual; padrão `America/Maceio` |
 
-O arquivo `.env.local` já está ignorado pelo Git. Não envie credenciais reais para o repositório.
+O arquivo `.env.local` já está ignorado pelo Git. Não envie credenciais reais para o repositório. Em especial, nunca renomeie `OPENAI_API_KEY` para uma variável com prefixo `NEXT_PUBLIC_`.
 
 ### 5. Inicie o servidor de desenvolvimento
 
@@ -174,9 +184,14 @@ Se o projeto já tem um remote configurado, não execute `git init` nem adicione
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_SUA_CHAVE_PUBLICA
+OPENAI_API_KEY=sk-proj-SUA_CHAVE_OPENAI
+OPENAI_FINANCIAL_MODEL=gpt-5-nano-2025-08-07
+FINANCIAL_ASSISTANT_TIME_ZONE=America/Maceio
 ```
 
 Marque pelo menos **Production**. Se quiser que deployments de pull requests também funcionem, marque **Preview**. Você pode usar o mesmo Supabase nos dois ambientes para uma instalação pessoal; em equipes, prefira projetos Supabase separados para não misturar dados de teste e produção.
+
+As três variáveis do assistente não usam `NEXT_PUBLIC_` e ficam disponíveis apenas nas funções do servidor da Vercel.
 
 6. Clique em **Deploy**.
 7. Ao terminar, abra a URL gerada, semelhante a `https://seu-projeto.vercel.app`.
@@ -218,6 +233,20 @@ O Money Log apresenta duas referências:
 - **Valor dinâmico:** saldo do mês dividido pelos dias restantes.
 
 Somente saídas marcadas como **gasto diário** consomem a meta. A aplicação usa um modelo de envelope: o valor não gasto em um dia se acumula, enquanto o excesso reduz o disponível dos dias seguintes.
+
+## Assistente financeiro
+
+O botão **Pergunte à IA** aparece nas páginas autenticadas. Cada solicitação passa por validação de origem, sessão, tamanho, escopo financeiro e rate limiting antes de chamar a OpenAI.
+
+O modelo não acessa o Supabase e não recebe ferramentas. O servidor calcula um resumo dos últimos 12 meses e envia somente valores agregados, nomes de categorias sanitizados e indicadores de orçamento. Descrições de transações, compras e assinaturas não são enviadas. Perguntas fora do domínio financeiro ou com sinais de prompt injection recebem uma resposta fixa sem consumir tokens da OpenAI.
+
+O histórico existe somente no navegador durante a sessão aberta e é limitado às seis mensagens mais recentes em cada chamada. A API usa Structured Outputs, `store: false`, um identificador de segurança anonimizado e o snapshot fixo do `gpt-5-nano` por padrão.
+
+### Estimativa de custo da IA
+
+Em julho de 2026, o `gpt-5-nano` custa **US$ 0,05 por 1 milhão de tokens de entrada** e **US$ 0,40 por 1 milhão de tokens de saída**, conforme a [página oficial do modelo](https://developers.openai.com/api/docs/models/gpt-5-nano). Uma análise típica deste projeto, com cerca de 4.000 tokens de entrada e 300 de saída, custa aproximadamente **US$ 0,00032** — em torno de **US$ 0,32 a cada mil análises**. O valor real varia com o volume do histórico, dos dados e da resposta e não inclui Vercel, Supabase, impostos ou câmbio.
+
+O limite de 20 análises por usuário a cada hora reduz abuso, mas não é um teto mensal de cobrança. Configure também um limite de uso no painel da OpenAI para controlar o orçamento total da conta.
 
 ## Scripts disponíveis
 

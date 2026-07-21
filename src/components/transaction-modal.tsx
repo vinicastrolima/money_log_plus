@@ -6,7 +6,7 @@ import { CalendarDays } from "lucide-react";
 import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { DateInput, Input, Label, Select } from "@/components/ui/input";
 import { ToggleField } from "@/components/ui/toggle-field";
 import { useData } from "@/components/data-provider";
 import type {
@@ -171,13 +171,13 @@ function TransactionModalContent({
             . Você ainda pode marcar o status como concluído abaixo.
           </p>
           <div className="rounded-lg border border-border p-3 text-sm">
-            <p className="font-medium">{transaction?.description}</p>
+            <p className="break-words font-medium">{transaction?.description}</p>
             <p className="text-expense">{transaction && formatCurrency(transaction.amount)}</p>
             <p className="text-muted">{transaction && formatDateBR(transaction.date)}</p>
           </div>
           <div>
             <Label>Status</Label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
               {TX_STATUS_ORDER.map((s) => {
                 const cfg = TX_STATUS[s];
                 const active = status === s;
@@ -187,11 +187,11 @@ function TransactionModalContent({
                     type="button"
                     onClick={() => setStatus(s)}
                     className={cn(
-                      "flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
+                      "flex min-w-0 items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
                       active ? cfg.badge : "border-border text-muted hover:bg-surface"
                     )}
                   >
-                    <span className={cn("h-2.5 w-2.5 rounded-full", cfg.dot)} />
+                    <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", cfg.dot)} />
                     {cfg.label}
                   </button>
                 );
@@ -230,7 +230,7 @@ function TransactionModalContent({
           </div>
         </div>
       ) : (
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="w-full min-w-0 max-w-full space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -263,7 +263,7 @@ function TransactionModalContent({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Ex: Mercado, Salário, Nubank..."
-            autoFocus
+            data-autofocus
           />
         </div>
 
@@ -280,9 +280,8 @@ function TransactionModalContent({
           </div>
           <div className="min-w-0">
             <Label htmlFor="tx-date">Data</Label>
-            <Input
+            <DateInput
               id="tx-date"
-              type="date"
               value={date}
               className="min-w-0 max-w-full"
               onChange={(e) => {
@@ -338,7 +337,7 @@ function TransactionModalContent({
           <p className="mb-2 text-xs text-muted">
             Verde = concluído · Amarelo = pendente (na margem) · Vermelho = atrasado
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
             {TX_STATUS_ORDER.map((s) => {
               const cfg = TX_STATUS[s];
               const active = status === s;
@@ -348,11 +347,11 @@ function TransactionModalContent({
                   type="button"
                   onClick={() => setStatus(s)}
                   className={cn(
-                    "flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
+                    "flex min-w-0 items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-medium transition-colors cursor-pointer",
                     active ? cfg.badge : "border-border text-muted hover:bg-surface"
                   )}
                 >
-                  <span className={cn("h-2.5 w-2.5 rounded-full", cfg.dot)} />
+                  <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", cfg.dot)} />
                   {cfg.label}
                 </button>
               );

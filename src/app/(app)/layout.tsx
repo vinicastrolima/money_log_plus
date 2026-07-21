@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AppTutorial } from "@/components/app-tutorial";
 import { DataProvider } from "@/components/data-provider";
+import { FinancialAssistant } from "@/components/financial-assistant/financial-assistant";
 import { Nav } from "@/components/nav";
 
 export default async function AppLayout({
@@ -36,6 +37,7 @@ export default async function AppLayout({
           </div>
         </main>
         <AppTutorial userKey={user.email} />
+        <FinancialAssistant />
       </div>
     </DataProvider>
   );
