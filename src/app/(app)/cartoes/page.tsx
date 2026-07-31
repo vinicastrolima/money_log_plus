@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
-import { CARD_GRADIENTS, DEFAULT_CARD_GRADIENT, cardNextPayment, cardOpenTotal, defaultClosingDay } from "@/lib/cards";
+import { CARD_GRADIENTS, DEFAULT_CARD_GRADIENT, cardNextPayment, cardOpenTotals, defaultClosingDay } from "@/lib/cards";
 
 export default function CartoesPage() {
   const {
@@ -24,6 +24,7 @@ export default function CartoesPage() {
     cardPurchases,
     cardSubscriptions,
     categories,
+    settings,
     addCreditCard,
     updateCreditCard,
     deleteCreditCard,
@@ -55,21 +56,25 @@ export default function CartoesPage() {
       ? chartScope
       : "all";
 
+  const sharedPurchasesEnabled = settings?.shared_purchases_enabled ?? false;
+
   const walletCards = React.useMemo((): WalletCardData[] => {
     return creditCards.map((card, i) => {
       const cardSubs = cardSubscriptions.filter((s) => s.credit_card_id === card.id);
       const cardPurch = cardPurchases.filter((p) => p.credit_card_id === card.id);
       const next = cardNextPayment(cardPurch, card, cardSubs, new Date());
+      const open = cardOpenTotals(cardPurch, card, new Date());
       return {
         card,
-        openTotal: cardOpenTotal(cardPurch, card, new Date()),
+        openTotal: open.total,
+        openOwnTotal: sharedPurchasesEnabled ? open.ownTotal : undefined,
         nextPaymentTotal: next?.total ?? 0,
         nextPaymentDate: next?.dueDate ?? null,
         purchaseCount: cardPurch.length,
         gradientIndex: i,
       };
     });
-  }, [creditCards, cardPurchases, cardSubscriptions]);
+  }, [creditCards, cardPurchases, cardSubscriptions, sharedPurchasesEnabled]);
 
   const filterCardId = effectiveChartScope === "all" ? null : effectiveChartScope;
   const filterLabel =
@@ -178,6 +183,8 @@ export default function CartoesPage() {
               setYear(y);
               setMonth0(m);
             }}
+            onOpenCard={openManage}
+            sharedPurchasesEnabled={sharedPurchasesEnabled}
           />
         </>
       )}
@@ -195,6 +202,7 @@ export default function CartoesPage() {
           subscriptions={cardSubscriptions.filter((s) => s.credit_card_id === detailCard.id)}
           categories={categories}
           openPurchaseOnMount={openPurchaseOnDetail}
+          sharedPurchasesEnabled={sharedPurchasesEnabled}
           onSaveCard={async (input) => {
             await updateCreditCard(detailCard.id, input);
           }}
@@ -210,6 +218,8 @@ export default function CartoesPage() {
               installments: input.installments,
               purchase_date: input.purchase_date,
               category_id: input.category_id,
+              is_shared: input.is_shared,
+              own_amount: input.own_amount,
             };
             if (input.id) await updateCardPurchase(input.id, payload);
             else await addCardPurchase(payload);

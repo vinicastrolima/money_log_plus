@@ -9,16 +9,19 @@ import {
   Repeat2,
   ShoppingBag,
   Trash2,
+  Users,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { DateInput, Input, Label, Select } from "@/components/ui/input";
+import { ToggleField } from "@/components/ui/toggle-field";
 import { WalletCardVisual } from "@/components/cards/wallet-stack";
 import {
   CARD_GRADIENTS,
   cardClosingDay,
   cardNextPayment,
-  cardOpenTotal,
+  cardOpenTotals,
+  purchaseOwnAmount,
   splitInstallments,
 } from "@/lib/cards";
 import { cn, formatCurrency, formatDateBR, toISODate } from "@/lib/utils";
@@ -33,6 +36,7 @@ interface Props {
   subscriptions: CardSubscription[];
   categories: Category[];
   openPurchaseOnMount?: boolean;
+  sharedPurchasesEnabled?: boolean;
   onSaveCard: (input: CreditCardInput) => Promise<void>;
   onDeleteCard: () => Promise<void>;
   onSavePurchase: (input: {
@@ -42,6 +46,8 @@ interface Props {
     installments: number;
     purchase_date: string;
     category_id: string | null;
+    is_shared: boolean;
+    own_amount: number | null;
   }) => Promise<void>;
   onDeletePurchase: (id: string) => Promise<void>;
   onSaveSubscription: (input: {
@@ -53,6 +59,10 @@ interface Props {
     active: boolean;
   }) => Promise<void>;
   onDeleteSubscription: (id: string) => Promise<void>;
+}
+
+function parseAmount(value: string): number {
+  return Number(value.replace(/\./g, "").replace(",", "."));
 }
 
 export function CardDetailModal(props: Props) {
@@ -76,6 +86,7 @@ function CardDetailModalContent({
   subscriptions,
   categories,
   openPurchaseOnMount,
+  sharedPurchasesEnabled = false,
   onSaveCard,
   onDeleteCard,
   onSavePurchase,
@@ -106,6 +117,8 @@ function CardDetailModalContent({
   const [categoryId, setCategoryId] = React.useState("");
   const [paymentType, setPaymentType] = React.useState<"avista" | "parcelado">("avista");
   const [installments, setInstallments] = React.useState("2");
+  const [isShared, setIsShared] = React.useState(false);
+  const [ownAmount, setOwnAmount] = React.useState("");
 
   const [subscriptionModalOpen, setSubscriptionModalOpen] = React.useState(false);
   const [editingSubscription, setEditingSubscription] = React.useState<CardSubscription | null>(null);
@@ -136,6 +149,8 @@ function CardDetailModalContent({
     setCategoryId("");
     setPaymentType("avista");
     setInstallments("2");
+    setIsShared(false);
+    setOwnAmount("");
   }, []);
 
   const resetSubscriptionForm = React.useCallback(() => {
@@ -147,11 +162,36 @@ function CardDetailModalContent({
     setSubscriptionActive(true);
   }, [defaultSubscriptionCategoryId]);
 
-  const openTotal = cardOpenTotal(purchases, card, new Date());
+  const { total: openTotal, ownTotal: openOwnTotal } = cardOpenTotals(
+    purchases,
+    card,
+    new Date()
+  );
   const nextPayment = cardNextPayment(purchases, card, subscriptions, new Date());
   const creditLimit = card.credit_limit ?? null;
   const availableLimit =
     creditLimit != null ? Math.max(creditLimit - openTotal, 0) : null;
+  const showOwnTotals = sharedPurchasesEnabled && openOwnTotal < openTotal - 0.005;
+
+  const purchaseTotalParsed = parseAmount(purchaseAmount);
+  const ownAmountParsed = parseAmount(ownAmount);
+  const sharedActive = sharedPurchasesEnabled && isShared;
+  const ownAmountError =
+    sharedActive && ownAmount.trim() !== ""
+      ? !Number.isFinite(ownAmountParsed) || ownAmountParsed <= 0
+        ? "Informe um valor maior que zero."
+        : Number.isFinite(purchaseTotalParsed) && ownAmountParsed > purchaseTotalParsed
+          ? "Sua parte não pode ser maior que o valor total."
+          : null
+      : null;
+  const otherPersonShare =
+    sharedActive &&
+    !ownAmountError &&
+    Number.isFinite(purchaseTotalParsed) &&
+    Number.isFinite(ownAmountParsed) &&
+    ownAmountParsed > 0
+      ? Math.round((purchaseTotalParsed - ownAmountParsed) * 100) / 100
+      : null;
 
   function openNewPurchase() {
     resetPurchaseForm();
@@ -181,6 +221,10 @@ function CardDetailModalContent({
     setCategoryId(purchase.category_id ?? "");
     setPaymentType(purchase.installments > 1 ? "parcelado" : "avista");
     setInstallments(String(purchase.installments > 1 ? purchase.installments : 2));
+    setIsShared(purchase.is_shared);
+    setOwnAmount(
+      purchase.own_amount != null ? String(purchase.own_amount).replace(".", ",") : ""
+    );
     setPurchaseModalOpen(true);
   }
 
@@ -214,7 +258,7 @@ function CardDetailModalContent({
 
   async function handleSavePurchase(event: React.FormEvent) {
     event.preventDefault();
-    const parsed = Number(purchaseAmount.replace(/\./g, "").replace(",", "."));
+    const parsed = parseAmount(purchaseAmount);
     const installmentCount = paymentType === "avista" ? 1 : Number(installments);
     if (!purchaseDesc.trim() || !Number.isFinite(parsed) || parsed <= 0) return;
     if (
@@ -222,6 +266,11 @@ function CardDetailModalContent({
       (!Number.isInteger(installmentCount) || installmentCount < 2 || installmentCount > 48)
     ) {
       return;
+    }
+    if (sharedActive) {
+      if (ownAmountError) return;
+      if (!Number.isFinite(ownAmountParsed) || ownAmountParsed <= 0) return;
+      if (ownAmountParsed > parsed) return;
     }
 
     setSaving(true);
@@ -233,6 +282,8 @@ function CardDetailModalContent({
         installments: installmentCount,
         purchase_date: purchaseDate,
         category_id: categoryId || null,
+        is_shared: sharedActive,
+        own_amount: sharedActive ? ownAmountParsed : null,
       });
       setPurchaseModalOpen(false);
     } finally {
@@ -337,7 +388,9 @@ function CardDetailModalContent({
               <CalendarClock size={19} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-muted">Em aberto</p>
+              <p className="text-xs font-medium text-muted">
+                {showOwnTotals ? "Em aberto no cartão" : "Em aberto"}
+              </p>
               <p className="mt-0.5 truncate text-sm font-semibold tabular-nums sm:text-base">
                 {formatCurrency(openTotal)}
                 {nextPayment ? (
@@ -347,6 +400,11 @@ function CardDetailModalContent({
                   </span>
                 ) : null}
               </p>
+              {showOwnTotals ? (
+                <p className="mt-0.5 truncate text-xs font-medium text-primary tabular-nums">
+                  Sua parte {formatCurrency(openOwnTotal)}
+                </p>
+              ) : null}
               {creditLimit != null ? (
                 <p className="mt-1 text-xs text-muted">
                   Limite {formatCurrency(creditLimit)}
@@ -523,12 +581,22 @@ function CardDetailModalContent({
                     purchase.installments > 1
                       ? splitInstallments(purchase.total_amount, purchase.installments)[0]
                       : purchase.total_amount;
+                  const own = purchaseOwnAmount(purchase);
+                  const shared = sharedPurchasesEnabled && purchase.is_shared;
 
                   return (
                     <li key={purchase.id} className="p-3.5 sm:p-4">
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{purchase.description}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-semibold">{purchase.description}</p>
+                            {shared && (
+                              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                                <Users size={11} aria-hidden="true" />
+                                Dividida
+                              </span>
+                            )}
+                          </div>
                           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
                             <span>{formatDateBR(purchase.purchase_date)}</span>
                             <span aria-hidden="true">·</span>
@@ -553,6 +621,11 @@ function CardDetailModalContent({
                           </p>
                           <p className="mt-1.5 text-sm font-semibold text-expense">
                             {formatCurrency(purchase.total_amount)}
+                            {shared && (
+                              <span className="ml-1.5 text-xs font-medium text-primary">
+                                · sua parte {formatCurrency(own)}
+                              </span>
+                            )}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center">
@@ -765,7 +838,9 @@ function CardDetailModalContent({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="min-w-0">
-              <Label htmlFor="p-amount">Valor total (R$)</Label>
+              <Label htmlFor="p-amount">
+                {sharedActive ? "Valor total da compra (R$)" : "Valor total (R$)"}
+              </Label>
               <Input
                 id="p-amount"
                 className="h-11"
@@ -789,6 +864,47 @@ function CardDetailModalContent({
               />
             </div>
           </div>
+          {sharedPurchasesEnabled && (
+            <ToggleField
+              checked={isShared}
+              onCheckedChange={(checked) => {
+                setIsShared(checked);
+                if (!checked) setOwnAmount("");
+              }}
+              icon={Users}
+              title="Compra dividida"
+              description="O cartão recebe o valor cheio, mas você paga só a sua parte."
+              ariaLabel="Marcar compra como dividida"
+            >
+              <div className="border-t border-primary/20 p-3">
+                <Label htmlFor="p-own-amount">Valor que irei pagar (R$)</Label>
+                <Input
+                  id="p-own-amount"
+                  className="h-11"
+                  inputMode="decimal"
+                  value={ownAmount}
+                  onChange={(event) => setOwnAmount(event.target.value)}
+                  placeholder="0,00"
+                  disabled={saving}
+                  aria-invalid={ownAmountError ? true : undefined}
+                  aria-describedby="p-own-amount-hint"
+                  required={sharedActive}
+                />
+                <p
+                  id="p-own-amount-hint"
+                  className={cn(
+                    "mt-1.5 text-xs",
+                    ownAmountError ? "text-expense" : "text-muted"
+                  )}
+                >
+                  {ownAmountError ??
+                    (otherPersonShare !== null
+                      ? `Parte da outra pessoa: ${formatCurrency(otherPersonShare)}`
+                      : "Quanto dessa compra sai do seu bolso.")}
+                </p>
+              </div>
+            </ToggleField>
+          )}
           <fieldset disabled={saving}>
             <legend className="text-sm font-medium text-foreground/85">Pagamento</legend>
             <div className="mt-2 grid grid-cols-2 gap-2.5">

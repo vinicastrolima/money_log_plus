@@ -3,13 +3,17 @@ import { MONTH_NAMES_PT, parseISODate, toISODate } from "./utils";
 
 export interface InstallmentLine {
   dueDate: string;
+  /** Valor cheio que entra na fatura do cartão. */
   amount: number;
+  /** Parte do valor que o dono do cartão paga (igual a amount quando não é dividida). */
+  ownAmount: number;
   purchaseId: string;
   installmentNumber: number;
   installmentsTotal: number;
   purchaseDescription: string;
   categoryId?: string | null;
   isSubscription?: boolean;
+  isShared?: boolean;
 }
 
 /** Meses futuros gerados para assinaturas recorrentes. */
@@ -76,12 +80,25 @@ export function splitInstallments(total: number, count: number): number[] {
   return amounts;
 }
 
+/** Parte da compra que o dono do cartão paga de fato. */
+export function purchaseOwnAmount(purchase: CardPurchase): number {
+  if (!purchase.is_shared) return purchase.total_amount;
+  const own = purchase.own_amount;
+  if (own == null || !Number.isFinite(own)) return purchase.total_amount;
+  return Math.min(Math.max(own, 0), purchase.total_amount);
+}
+
 /** Gera todas as parcelas de uma compra para um cartão. */
 export function installmentsForPurchaseWithCard(
   purchase: CardPurchase,
   card: CreditCard
 ): InstallmentLine[] {
   const amounts = splitInstallments(purchase.total_amount, purchase.installments);
+  const own = purchaseOwnAmount(purchase);
+  const ownAmounts =
+    own === purchase.total_amount
+      ? amounts
+      : splitInstallments(own, purchase.installments);
   const first = invoiceDueDateForPurchase(
     purchase.purchase_date,
     card.due_day,
@@ -97,12 +114,14 @@ export function installmentsForPurchaseWithCard(
     return {
       dueDate: toISODate(monthDate),
       amount,
+      ownAmount: ownAmounts[i],
       purchaseId: purchase.id,
       installmentNumber: i + 1,
       installmentsTotal: purchase.installments,
       purchaseDescription: purchase.description,
       categoryId: purchase.category_id,
       isSubscription: false,
+      isShared: purchase.is_shared,
     };
   });
 }
@@ -130,12 +149,14 @@ export function installmentsForSubscription(
     return {
       dueDate: toISODate(monthDate),
       amount: subscription.amount,
+      ownAmount: subscription.amount,
       purchaseId: subscription.id,
       installmentNumber: i + 1,
       installmentsTotal: 0,
       purchaseDescription: subscription.description,
       categoryId: subscription.category_id,
       isSubscription: true,
+      isShared: false,
     };
   });
 }
@@ -160,6 +181,8 @@ export function allInstallmentLines(
 export interface AggregatedCardPayment {
   dueDate: string;
   total: number;
+  /** Soma da parte própria das parcelas do dia. */
+  ownTotal: number;
   lines: InstallmentLine[];
 }
 
@@ -174,30 +197,44 @@ export function aggregateByDueDate(
     const cur = map.get(line.dueDate) ?? {
       dueDate: line.dueDate,
       total: 0,
+      ownTotal: 0,
       lines: [],
     };
     cur.total += line.amount;
+    cur.ownTotal += line.ownAmount;
     cur.lines.push(line);
     map.set(line.dueDate, cur);
   }
   return Array.from(map.values()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-/** Total em aberto: parcelas de compras ainda não vencidas (sem assinaturas). */
+/** Totais em aberto: parcelas de compras ainda não vencidas (sem assinaturas). */
+export function cardOpenTotals(
+  purchases: CardPurchase[],
+  card: CreditCard,
+  today: Date = new Date()
+): { total: number; ownTotal: number } {
+  const todayStr = toISODate(today);
+  let total = 0;
+  let ownTotal = 0;
+  for (const purchase of purchases) {
+    if (purchase.credit_card_id !== card.id) continue;
+    for (const line of installmentsForPurchaseWithCard(purchase, card)) {
+      if (line.dueDate < todayStr) continue;
+      total += line.amount;
+      ownTotal += line.ownAmount;
+    }
+  }
+  return { total, ownTotal };
+}
+
+/** Total em aberto pelo valor cheio da fatura. */
 export function cardOpenTotal(
   purchases: CardPurchase[],
   card: CreditCard,
   today: Date = new Date()
 ): number {
-  const todayStr = toISODate(today);
-  let total = 0;
-  for (const purchase of purchases) {
-    if (purchase.credit_card_id !== card.id) continue;
-    for (const line of installmentsForPurchaseWithCard(purchase, card)) {
-      if (line.dueDate >= todayStr) total += line.amount;
-    }
-  }
-  return total;
+  return cardOpenTotals(purchases, card, today).total;
 }
 
 /** Próxima fatura (compras + assinaturas) a partir de hoje. */
@@ -260,8 +297,71 @@ export function cardChartColor(card: CreditCard, index: number): string {
 
 export interface CardPaymentStats {
   total: number;
+  /** Quanto o dono do cartão paga, descontando a parte dividida. */
+  ownTotal: number;
   purchaseCount: number;
   installmentCount: number;
+  sharedCount: number;
+}
+
+export interface ScopedInstallmentLine extends InstallmentLine {
+  cardId: string;
+  cardName: string;
+}
+
+export type InvoiceListFilter =
+  | { kind: "month"; year: number; month0: number }
+  | { kind: "range"; year: number; month0: number; monthCount: number }
+  | { kind: "category"; year: number; month0: number; categoryId: string };
+
+function lineMatchesFilter(line: InstallmentLine, filter: InvoiceListFilter): boolean {
+  const due = parseISODate(line.dueDate);
+  const dueYear = due.getFullYear();
+  const dueMonth = due.getMonth();
+
+  if (filter.kind === "month" || filter.kind === "category") {
+    if (dueYear !== filter.year || dueMonth !== filter.month0) return false;
+    if (filter.kind === "category") {
+      const key = line.categoryId ?? "none";
+      return key === filter.categoryId;
+    }
+    return true;
+  }
+
+  const start = filter.year * 12 + filter.month0;
+  const end = start + filter.monthCount - 1;
+  const point = dueYear * 12 + dueMonth;
+  return point >= start && point <= end;
+}
+
+/** Parcelas no escopo (mês, intervalo ou categoria) para listagem. */
+export function installmentLinesForList(
+  purchases: CardPurchase[],
+  cards: CreditCard[],
+  subscriptions: CardSubscription[],
+  filterCardId: string | null | undefined,
+  filter: InvoiceListFilter
+): ScopedInstallmentLine[] {
+  const lines: ScopedInstallmentLine[] = [];
+
+  for (const card of cards) {
+    if (filterCardId && card.id !== filterCardId) continue;
+    const cardPurchases = purchases.filter((p) => p.credit_card_id === card.id);
+    const cardSubs = subscriptions.filter((s) => s.credit_card_id === card.id);
+    for (const line of allInstallmentLines(cardPurchases, cardSubs, card)) {
+      if (!lineMatchesFilter(line, filter)) continue;
+      lines.push({
+        ...line,
+        cardId: card.id,
+        cardName: card.name,
+      });
+    }
+  }
+
+  return lines.sort((a, b) => {
+    if (a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+    return a.purchaseDescription.localeCompare(b.purchaseDescription, "pt-BR");
+  });
 }
 
 /** Resumo das parcelas que vencem no mês, considerando o escopo de cartões. */
@@ -273,11 +373,12 @@ export function cardPaymentStatsInMonth(
   filterCardId?: string | null,
   subscriptions: CardSubscription[] = []
 ): CardPaymentStats {
-  const cardMap = new Map(cards.map((card) => [card.id, card]));
   const purchaseIds = new Set<string>();
   const subscriptionIds = new Set<string>();
+  const sharedIds = new Set<string>();
   let installmentCount = 0;
   let total = 0;
+  let ownTotal = 0;
 
   for (const card of cards) {
     if (filterCardId && card.id !== filterCardId) continue;
@@ -288,15 +389,19 @@ export function cardPaymentStatsInMonth(
       if (dueDate.getFullYear() !== year || dueDate.getMonth() !== month0) continue;
       if (line.isSubscription) subscriptionIds.add(line.purchaseId);
       else purchaseIds.add(line.purchaseId);
+      if (line.isShared) sharedIds.add(line.purchaseId);
       installmentCount += 1;
       total += line.amount;
+      ownTotal += line.ownAmount;
     }
   }
 
   return {
     total: Math.round(total * 100) / 100,
+    ownTotal: Math.round(ownTotal * 100) / 100,
     purchaseCount: purchaseIds.size + subscriptionIds.size,
     installmentCount,
+    sharedCount: sharedIds.size,
   };
 }
 
@@ -350,6 +455,7 @@ export interface MonthlyPaymentPoint {
   key: string;
   label: string;
   total: number;
+  ownTotal: number;
   byCard: { cardId: string; name: string; color: string; amount: number }[];
 }
 
@@ -372,6 +478,7 @@ export function paymentsByMonthRange(
     const month0 = d.getMonth();
     const key = `${year}-${String(month0 + 1).padStart(2, "0")}`;
     const byCard = new Map<string, number>();
+    let ownTotal = 0;
 
     for (const card of cards) {
       if (filterCardId && card.id !== filterCardId) continue;
@@ -381,6 +488,7 @@ export function paymentsByMonthRange(
         const ld = parseISODate(line.dueDate);
         if (ld.getFullYear() === year && ld.getMonth() === month0) {
           byCard.set(card.id, (byCard.get(card.id) ?? 0) + line.amount);
+          ownTotal += line.ownAmount;
         }
       }
     }
@@ -399,6 +507,7 @@ export function paymentsByMonthRange(
       key,
       label: `${MONTH_NAMES_PT[month0].slice(0, 3)}`,
       total: Math.round(byCardArr.reduce((s, c) => s + c.amount, 0) * 100) / 100,
+      ownTotal: Math.round(ownTotal * 100) / 100,
       byCard: byCardArr,
     });
   }

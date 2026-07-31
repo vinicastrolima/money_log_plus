@@ -19,9 +19,11 @@ const KIND_LABEL: Record<CategoryKind, string> = {
 };
 
 const PALETTE = [
-  "#16a34a", "#22c55e", "#dc2626", "#f97316", "#7c3aed",
-  "#0ea5e9", "#ec4899", "#eab308", "#84cc16", "#06b6d4",
-  "#6366f1", "#64748b", "#9A6B3F",
+  "#16a34a", "#059669", "#22c55e", "#84cc16", "#65a30d",
+  "#dc2626", "#b91c1c", "#ea580c", "#f97316", "#eab308",
+  "#7c3aed", "#4f46e5", "#6366f1", "#0ea5e9", "#06b6d4",
+  "#ec4899", "#d946ef", "#db2777", "#64748b", "#78716c",
+  "#9A6B3F", "#a855f7", "#14b8a6", "#0f766e",
 ];
 
 export default function CategoriesPage() {

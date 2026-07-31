@@ -16,6 +16,7 @@ import {
   type TooltipContentProps,
   type TooltipValueType,
 } from "recharts";
+import { InvoiceLinesModal } from "@/components/cards/invoice-lines-modal";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { Card } from "@/components/ui/card";
 import type { CardPurchase, CardSubscription, Category, CreditCard } from "@/lib/types";
@@ -23,10 +24,12 @@ import {
   ALL_CARDS_CHART_COLOR,
   cardChartColor,
   cardPaymentStatsInMonth,
+  installmentLinesForList,
+  type InvoiceListFilter,
   paymentsByMonthRange,
   spendingByCategoryInMonth,
 } from "@/lib/cards";
-import { formatCurrency, MONTH_NAMES_PT } from "@/lib/utils";
+import { cn, formatCurrency, MONTH_NAMES_PT } from "@/lib/utils";
 
 interface Props {
   creditCards: CreditCard[];
@@ -39,13 +42,20 @@ interface Props {
   year: number;
   month0: number;
   onMonthChange: (year: number, month0: number) => void;
+  onOpenCard?: (cardId: string) => void;
+  sharedPurchasesEnabled?: boolean;
 }
+
+type MetricListKind = "month" | "range" | "category";
 
 interface MetricProps {
   label: string;
   value: string;
   detail: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  onClick?: () => void;
+  disabled?: boolean;
+  highlight?: string;
 }
 
 const compactNumber = new Intl.NumberFormat("pt-BR", {
@@ -57,9 +67,24 @@ function formatAxisCurrency(value: number): string {
   return `R$ ${compactNumber.format(value)}`;
 }
 
-function Metric({ label, value, detail, icon: Icon }: MetricProps) {
-  return (
-    <Card className="min-w-0 p-3.5 shadow-none sm:p-4">
+function Metric({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  onClick,
+  disabled,
+  highlight,
+}: MetricProps) {
+  const interactive = Boolean(onClick) && !disabled;
+  const className = cn(
+    "card min-w-0 p-3.5 text-left shadow-none transition-colors sm:p-4",
+    interactive &&
+      "cursor-pointer hover:border-primary/30 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  );
+
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-medium text-muted">{label}</p>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -69,9 +94,29 @@ function Metric({ label, value, detail, icon: Icon }: MetricProps) {
       <p className="mt-2 truncate text-lg font-semibold tracking-tight sm:text-xl">
         {value}
       </p>
+      {highlight && (
+        <p className="mt-1 truncate text-[11px] font-medium text-primary sm:text-xs">
+          {highlight}
+        </p>
+      )}
       <p className="mt-1 truncate text-[11px] text-muted sm:text-xs">{detail}</p>
-    </Card>
+      {interactive && (
+        <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-primary/80">
+          Ver lista
+        </p>
+      )}
+    </>
   );
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={className}>{body}</div>;
 }
 
 function CurrencyTooltip({
@@ -121,7 +166,11 @@ export function CardChartsPanel({
   year,
   month0,
   onMonthChange,
+  onOpenCard,
+  sharedPurchasesEnabled = false,
 }: Props) {
+  const [listKind, setListKind] = React.useState<MetricListKind | null>(null);
+
   const byCategory = React.useMemo(
     () =>
       spendingByCategoryInMonth(
@@ -188,7 +237,14 @@ export function CardChartsPanel({
 
   const totalCategory = byCategory.reduce((sum, item) => sum + item.total, 0);
   const totalMonthly = monthly.reduce((sum, item) => sum + item.total, 0);
+  const ownTotalMonthly = monthly.reduce((sum, item) => sum + item.ownTotal, 0);
   const monthlyAverage = monthly.length > 0 ? totalMonthly / monthly.length : 0;
+
+  /** Só destaca a segunda linha quando alguma compra dividida altera o valor. */
+  const ownHighlight = (total: number, own: number) =>
+    sharedPurchasesEnabled && own < total - 0.005
+      ? `Sua parte ${formatCurrency(own)}`
+      : undefined;
   const topCategory = byCategory[0] ?? null;
   const showStacked = !filterCardId && creditCards.length > 1;
 
@@ -213,6 +269,49 @@ export function CardChartsPanel({
     ? series[0]?.color ?? ALL_CARDS_CHART_COLOR
     : ALL_CARDS_CHART_COLOR;
   const noPaymentsInRange = totalCategory === 0 && totalMonthly === 0;
+
+  const listFilter = React.useMemo((): InvoiceListFilter | null => {
+    if (!listKind) return null;
+    if (listKind === "month") return { kind: "month", year, month0 };
+    if (listKind === "range") {
+      return { kind: "range", year, month0, monthCount: Math.max(monthly.length, 6) };
+    }
+    if (!topCategory) return null;
+    return { kind: "category", year, month0, categoryId: topCategory.id };
+  }, [listKind, year, month0, monthly.length, topCategory]);
+
+  const listLines = React.useMemo(() => {
+    if (!listFilter) return [];
+    return installmentLinesForList(
+      cardPurchases,
+      creditCards,
+      cardSubscriptions,
+      filterCardId,
+      listFilter
+    );
+  }, [listFilter, cardPurchases, creditCards, cardSubscriptions, filterCardId]);
+
+  const listMeta = React.useMemo(() => {
+    if (listKind === "month") {
+      return {
+        title: "Compras da fatura",
+        subtitle: `${filterLabel} · ${selectedMonthLabel}`,
+      };
+    }
+    if (listKind === "range") {
+      return {
+        title: "Compras nos próximos 6 meses",
+        subtitle: `${filterLabel} · ${periodLabel}`,
+      };
+    }
+    if (listKind === "category" && topCategory) {
+      return {
+        title: topCategory.name,
+        subtitle: `Maior categoria · ${selectedMonthLabel}`,
+      };
+    }
+    return { title: "Compras", subtitle: filterLabel };
+  }, [listKind, filterLabel, selectedMonthLabel, periodLabel, topCategory]);
 
   return (
     <section className="space-y-4" aria-labelledby="card-analysis-title">
@@ -239,6 +338,8 @@ export function CardChartsPanel({
           value={formatCurrency(monthStats.total)}
           detail={selectedMonthLabel}
           icon={ReceiptText}
+          onClick={() => setListKind("month")}
+          highlight={ownHighlight(monthStats.total, monthStats.ownTotal)}
         />
         <Metric
           label="Compras na fatura"
@@ -247,20 +348,51 @@ export function CardChartsPanel({
             monthStats.installmentCount === 1 ? "" : "s"
           } no período`}
           icon={ShoppingBag}
+          onClick={() => setListKind("month")}
+          highlight={
+            sharedPurchasesEnabled && monthStats.sharedCount > 0
+              ? `${monthStats.sharedCount} dividida${
+                  monthStats.sharedCount === 1 ? "" : "s"
+                }`
+              : undefined
+          }
         />
         <Metric
           label="Próximos 6 meses"
           value={formatCurrency(totalMonthly)}
           detail={`Média de ${formatCurrency(monthlyAverage)}`}
           icon={CalendarRange}
+          onClick={() => setListKind("range")}
+          highlight={ownHighlight(totalMonthly, ownTotalMonthly)}
         />
         <Metric
           label="Maior categoria"
           value={topCategory ? formatCurrency(topCategory.total) : "—"}
           detail={topCategory?.name ?? "Sem gastos no mês"}
           icon={Layers3}
+          onClick={topCategory ? () => setListKind("category") : undefined}
+          disabled={!topCategory}
         />
       </div>
+
+      <InvoiceLinesModal
+        open={listKind !== null}
+        onClose={() => setListKind(null)}
+        title={listMeta.title}
+        subtitle={listMeta.subtitle}
+        lines={listLines}
+        categories={categories}
+        showCardName={!filterCardId}
+        showOwnAmounts={sharedPurchasesEnabled}
+        onOpenCard={
+          onOpenCard
+            ? (cardId) => {
+                setListKind(null);
+                onOpenCard(cardId);
+              }
+            : undefined
+        }
+      />
 
       {noPaymentsInRange ? (
         <Card className="border-dashed bg-card/70 px-5 py-9 text-center shadow-none sm:py-11">

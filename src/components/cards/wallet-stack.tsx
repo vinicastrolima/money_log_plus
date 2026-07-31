@@ -20,10 +20,18 @@ const MAX_VISIBLE_CARDS = 3;
 export interface WalletCardData {
   card: CreditCard;
   openTotal: number;
+  /** Parte em aberto que o dono do cartão paga, descontando compras divididas. */
+  openOwnTotal?: number;
   nextPaymentTotal: number;
   nextPaymentDate: string | null;
   purchaseCount: number;
   gradientIndex: number;
+}
+
+/** Só mostra o segundo total quando alguma compra dividida muda o valor. */
+function ownTotalToShow(total: number, ownTotal: number | undefined): number | null {
+  if (ownTotal == null) return null;
+  return ownTotal < total - 0.005 ? ownTotal : null;
 }
 
 interface WalletCardVisualProps {
@@ -160,10 +168,16 @@ export function WalletDeck({
   const behindCount = visibleCards.length - 1;
   const hiddenCount = Math.max(0, cards.length - visibleCards.length);
   const allOpenTotal = cards.reduce((sum, item) => sum + item.openTotal, 0);
+  const allOpenOwnTotal = cards.reduce(
+    (sum, item) => sum + (item.openOwnTotal ?? item.openTotal),
+    0
+  );
   const allNextPaymentTotal = cards.reduce(
     (sum, item) => sum + item.nextPaymentTotal,
     0
   );
+  const frontCardOwnTotal = ownTotalToShow(frontCard.openTotal, frontCard.openOwnTotal);
+  const allOwnTotal = ownTotalToShow(allOpenTotal, allOpenOwnTotal);
 
   function selectCard(cardId: string) {
     setFrontId(cardId);
@@ -259,6 +273,14 @@ export function WalletDeck({
                 <> · vence {formatDateBR(frontCard.nextPaymentDate)}</>
               ) : null}
             </p>
+            {frontCardOwnTotal !== null ? (
+              <p className="mt-1 text-sm text-slate-400">
+                Sua parte{" "}
+                <span className="font-medium text-slate-200 tabular-nums">
+                  {formatCurrency(frontCardOwnTotal)}
+                </span>
+              </p>
+            ) : null}
 
             <div className="mt-7 grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
@@ -339,6 +361,14 @@ export function WalletDeck({
           <p className="text-xs text-muted">
             {formatCurrency(allNextPaymentTotal)} na próxima fatura ·{" "}
             {formatCurrency(allOpenTotal)} em aberto
+            {allOwnTotal !== null ? (
+              <>
+                {" "}
+                · <span className="font-medium text-primary">
+                  sua parte {formatCurrency(allOwnTotal)}
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         <div

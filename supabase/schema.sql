@@ -83,8 +83,27 @@ create table if not exists public.card_purchases (
   installments int not null default 1 check (installments >= 1 and installments <= 48),
   purchase_date date not null,
   category_id uuid references public.categories (id) on delete set null,
+  is_shared boolean not null default false,
+  own_amount numeric(14, 2),
   created_at timestamptz not null default now()
 );
+
+-- Compras divididas: total_amount é o valor cheio da fatura e own_amount é a
+-- parte que o dono do cartão realmente paga.
+alter table public.card_purchases
+  add column if not exists is_shared boolean not null default false;
+alter table public.card_purchases
+  add column if not exists own_amount numeric(14, 2);
+alter table public.card_purchases
+  drop constraint if exists card_purchases_own_amount_check;
+alter table public.card_purchases
+  add constraint card_purchases_own_amount_check
+  check (own_amount is null or (own_amount > 0 and own_amount <= total_amount));
+alter table public.card_purchases
+  drop constraint if exists card_purchases_shared_own_amount_check;
+alter table public.card_purchases
+  add constraint card_purchases_shared_own_amount_check
+  check (not is_shared or own_amount is not null);
 
 create table if not exists public.card_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -101,8 +120,12 @@ create table if not exists public.card_subscriptions (
 create table if not exists public.settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   daily_target numeric(14, 2) not null default 50,
-  cycle_days int not null default 30
+  cycle_days int not null default 30,
+  shared_purchases_enabled boolean not null default false
 );
+
+alter table public.settings
+  add column if not exists shared_purchases_enabled boolean not null default false;
 
 -- Registra apenas uso do assistente para rate limiting. Não armazena prompts.
 create table if not exists public.financial_assistant_requests (

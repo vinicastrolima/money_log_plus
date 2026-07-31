@@ -22,6 +22,8 @@ type CardPurchaseRow = {
   purchase_date: string;
   total_amount: number | string;
   category_id: string | null;
+  is_shared: boolean | null;
+  own_amount: number | string | null;
 };
 
 type SubscriptionRow = {
@@ -200,7 +202,7 @@ export async function buildFinancialSnapshot(
         .lte("date", dateContext.end),
       supabase
         .from("card_purchases")
-        .select("purchase_date,total_amount,category_id")
+        .select("purchase_date,total_amount,category_id,is_shared,own_amount")
         .eq("user_id", userId)
         .gte("purchase_date", dateContext.start)
         .lte("purchase_date", dateContext.end),
@@ -306,7 +308,11 @@ export async function buildFinancialSnapshot(
   for (const purchase of purchases) {
     const month = monthKey(purchase.purchase_date);
     if (!cashFlowMap.has(month)) continue;
-    const value = amount(purchase.total_amount);
+    // Em compras divididas só a parte do usuário conta como gasto dele.
+    const value =
+      purchase.is_shared && purchase.own_amount != null
+        ? amount(purchase.own_amount)
+        : amount(purchase.total_amount);
     const bucket = getCategoryBucket(month, purchase.category_id);
     bucket.cardPurchases += value;
     largestExpenses.push({
