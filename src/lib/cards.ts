@@ -1,5 +1,52 @@
-import type { CardPurchase, CardSubscription, Category, CreditCard } from "./types";
+import type {
+  CardPurchase,
+  CardSubscription,
+  Category,
+  CreditCard,
+  Direction,
+  TxStatus,
+} from "./types";
 import { MONTH_NAMES_PT, parseISODate, toISODate } from "./utils";
+
+type InvoiceTxRef = {
+  credit_card_id: string | null;
+  date: string;
+  status: TxStatus;
+  direction?: Direction;
+};
+
+/** Normaliza "2026-08-10" ou ISO datetime para chave YYYY-MM-DD. */
+export function invoiceDateKey(value: string): string {
+  return value.slice(0, 10);
+}
+
+/** Status das faturas geradas (lançamentos com credit_card_id) por vencimento. */
+export function cardInvoiceStatusByDate(
+  transactions: InvoiceTxRef[],
+  cardId: string
+): Map<string, TxStatus> {
+  const map = new Map<string, TxStatus>();
+  for (const tx of transactions) {
+    if (tx.credit_card_id !== cardId) continue;
+    if (tx.direction != null && tx.direction !== "out") continue;
+    map.set(invoiceDateKey(tx.date), tx.status);
+  }
+  return map;
+}
+
+function invoiceIsPaid(
+  invoiceStatusByDate: ReadonlyMap<string, TxStatus> | undefined,
+  dueDate: string
+): boolean {
+  return invoiceStatusByDate?.get(invoiceDateKey(dueDate)) === "concluido";
+}
+
+function invoiceStatusOnDate(
+  invoiceStatusByDate: ReadonlyMap<string, TxStatus> | undefined,
+  dueDate: string
+): TxStatus | undefined {
+  return invoiceStatusByDate?.get(invoiceDateKey(dueDate));
+}
 
 export interface InstallmentLine {
   dueDate: string;
@@ -208,11 +255,17 @@ export function aggregateByDueDate(
   return Array.from(map.values()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-/** Totais em aberto: parcelas de compras ainda não vencidas (sem assinaturas). */
+/**
+ * Totais em aberto: parcelas de compras que ainda consomem limite
+ * (sem assinaturas). Faturas com status `concluido` liberam o valor.
+ * Parcelas vencidas só entram se a fatura correspondente ainda estiver
+ * pendente/atrasada.
+ */
 export function cardOpenTotals(
   purchases: CardPurchase[],
   card: CreditCard,
-  today: Date = new Date()
+  today: Date = new Date(),
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
 ): { total: number; ownTotal: number } {
   const todayStr = toISODate(today);
   let total = 0;
@@ -220,35 +273,68 @@ export function cardOpenTotals(
   for (const purchase of purchases) {
     if (purchase.credit_card_id !== card.id) continue;
     for (const line of installmentsForPurchaseWithCard(purchase, card)) {
-      if (line.dueDate < todayStr) continue;
+      if (invoiceIsPaid(invoiceStatusByDate, line.dueDate)) continue;
+
+      if (line.dueDate < todayStr) {
+        const status = invoiceStatusOnDate(invoiceStatusByDate, line.dueDate);
+        if (status !== "pendente" && status !== "atrasado") continue;
+      }
+
       total += line.amount;
       ownTotal += line.ownAmount;
     }
   }
-  return { total, ownTotal };
+  return {
+    total: Math.round(total * 100) / 100,
+    ownTotal: Math.round(ownTotal * 100) / 100,
+  };
 }
 
 /** Total em aberto pelo valor cheio da fatura. */
 export function cardOpenTotal(
   purchases: CardPurchase[],
   card: CreditCard,
-  today: Date = new Date()
+  today: Date = new Date(),
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
 ): number {
-  return cardOpenTotals(purchases, card, today).total;
+  return cardOpenTotals(purchases, card, today, invoiceStatusByDate).total;
 }
 
-/** Próxima fatura (compras + assinaturas) a partir de hoje. */
+/** Limite disponível = limite cadastrado − valor em aberto (após pagamentos). */
+export function cardAvailableLimit(
+  creditLimit: number | null | undefined,
+  openTotal: number
+): number | null {
+  if (creditLimit == null || !Number.isFinite(creditLimit)) return null;
+  return Math.max(Math.round((creditLimit - openTotal) * 100) / 100, 0);
+}
+
+/**
+ * Próxima fatura em aberto.
+ * Assim que uma fatura é marcada como `concluido`, ela deixa de ser a
+ * "próxima" — sem esperar o vencimento passar — e o app aponta para a
+ * seguinte pendente/atrasada.
+ */
 export function cardNextPayment(
   purchases: CardPurchase[],
   card: CreditCard,
   subscriptions: CardSubscription[] = [],
-  today: Date = new Date()
+  today: Date = new Date(),
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
 ): AggregatedCardPayment | null {
   const todayStr = toISODate(today);
   return (
-    aggregateByDueDate(purchases, card, subscriptions).find(
-      (payment) => payment.dueDate >= todayStr
-    ) ?? null
+    aggregateByDueDate(purchases, card, subscriptions).find((payment) => {
+      if (invoiceIsPaid(invoiceStatusByDate, payment.dueDate)) return false;
+
+      if (payment.dueDate < todayStr) {
+        const status = invoiceStatusOnDate(invoiceStatusByDate, payment.dueDate);
+        // Vencida só continua como "próxima" se ainda estiver em aberto.
+        return status === "pendente" || status === "atrasado";
+      }
+
+      return true;
+    }) ?? null
   );
 }
 
@@ -518,7 +604,8 @@ export function paymentsByMonthRange(
 export function allCardsOpenTotal(
   purchases: CardPurchase[],
   cards: CreditCard[],
-  today: Date = new Date()
+  today: Date = new Date(),
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
 ): number {
   return cards.reduce(
     (sum, card) =>
@@ -526,7 +613,8 @@ export function allCardsOpenTotal(
       cardOpenTotal(
         purchases.filter((p) => p.credit_card_id === card.id),
         card,
-        today
+        today,
+        invoiceStatusByDate
       ),
     0
   );

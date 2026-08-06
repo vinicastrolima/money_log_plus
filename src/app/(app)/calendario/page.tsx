@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Plus, ArrowUpRight, ArrowDownRight, CalendarDays } from "lucide-react";
 import { useData } from "@/components/data-provider";
+import { HideValuesToggle } from "@/components/hide-values-toggle";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { TransactionModal } from "@/components/transaction-modal";
 import { TransactionStatusBadge } from "@/components/transaction-status-badge";
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { filterByMonth } from "@/lib/budget";
+import { useHideValues } from "@/lib/hide-values";
 import {
   daysInMonth,
   formatCurrency,
@@ -32,6 +34,7 @@ interface DayAgg {
 
 export default function CalendarPage() {
   const { loading, transactions, categoryById } = useData();
+  const { hidden: hideValues } = useHideValues();
   const now = new Date();
   const [year, setYear] = React.useState(now.getFullYear());
   const [month0, setMonth0] = React.useState(now.getMonth());
@@ -81,14 +84,17 @@ export default function CalendarPage() {
         title="Calendário"
         description="Visualize entradas, saídas e compromissos em cada dia do mês."
         actions={
-          <MonthSwitcher
-            year={year}
-            month0={month0}
-            onChange={(y, m) => {
-              setYear(y);
-              setMonth0(m);
-            }}
-          />
+          <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:flex-nowrap">
+            <HideValuesToggle />
+            <MonthSwitcher
+              year={year}
+              month0={month0}
+              onChange={(y, m) => {
+                setYear(y);
+                setMonth0(m);
+              }}
+            />
+          </div>
         }
       />
 
@@ -161,12 +167,12 @@ export default function CalendarPage() {
                           <div className="mt-2 space-y-1">
                             {agg.income > 0 && (
                               <p className="truncate text-[11px] font-semibold tabular-nums text-income">
-                                +{formatCurrency(agg.income)}
+                                +{formatCurrency(agg.income, hideValues)}
                               </p>
                             )}
                             {agg.expense > 0 && (
                               <p className="truncate text-[11px] font-semibold tabular-nums text-expense">
-                                −{formatCurrency(agg.expense)}
+                                −{formatCurrency(agg.expense, hideValues)}
                               </p>
                             )}
                           </div>
@@ -257,7 +263,7 @@ export default function CalendarPage() {
                           }`}
                         >
                           {t.direction === "in" ? "+" : "−"}
-                          {formatCurrency(t.amount)}
+                          {formatCurrency(t.amount, hideValues)}
                         </span>
                         <TransactionStatusBadge
                           status={t.status}

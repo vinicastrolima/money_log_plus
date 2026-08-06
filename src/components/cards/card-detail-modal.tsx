@@ -18,14 +18,23 @@ import { ToggleField } from "@/components/ui/toggle-field";
 import { WalletCardVisual } from "@/components/cards/wallet-stack";
 import {
   CARD_GRADIENTS,
+  cardAvailableLimit,
   cardClosingDay,
+  cardInvoiceStatusByDate,
   cardNextPayment,
   cardOpenTotals,
   purchaseOwnAmount,
   splitInstallments,
 } from "@/lib/cards";
 import { cn, formatCurrency, formatDateBR, toISODate } from "@/lib/utils";
-import type { CardPurchase, CardSubscription, Category, CreditCard, CreditCardInput } from "@/lib/types";
+import type {
+  CardPurchase,
+  CardSubscription,
+  Category,
+  CreditCard,
+  CreditCardInput,
+  Transaction,
+} from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -34,6 +43,7 @@ interface Props {
   gradientIndex: number;
   purchases: CardPurchase[];
   subscriptions: CardSubscription[];
+  transactions?: Transaction[];
   categories: Category[];
   openPurchaseOnMount?: boolean;
   sharedPurchasesEnabled?: boolean;
@@ -84,6 +94,7 @@ function CardDetailModalContent({
   gradientIndex,
   purchases,
   subscriptions,
+  transactions = [],
   categories,
   openPurchaseOnMount,
   sharedPurchasesEnabled = false,
@@ -162,15 +173,22 @@ function CardDetailModalContent({
     setSubscriptionActive(true);
   }, [defaultSubscriptionCategoryId]);
 
+  const invoiceStatus = cardInvoiceStatusByDate(transactions, card.id);
   const { total: openTotal, ownTotal: openOwnTotal } = cardOpenTotals(
     purchases,
     card,
-    new Date()
+    new Date(),
+    invoiceStatus
   );
-  const nextPayment = cardNextPayment(purchases, card, subscriptions, new Date());
+  const nextPayment = cardNextPayment(
+    purchases,
+    card,
+    subscriptions,
+    new Date(),
+    invoiceStatus
+  );
   const creditLimit = card.credit_limit ?? null;
-  const availableLimit =
-    creditLimit != null ? Math.max(creditLimit - openTotal, 0) : null;
+  const availableLimit = cardAvailableLimit(creditLimit, openTotal);
   const showOwnTotals = sharedPurchasesEnabled && openOwnTotal < openTotal - 0.005;
 
   const purchaseTotalParsed = parseAmount(purchaseAmount);

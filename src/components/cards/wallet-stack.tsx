@@ -24,6 +24,8 @@ export interface WalletCardData {
   openOwnTotal?: number;
   nextPaymentTotal: number;
   nextPaymentDate: string | null;
+  /** Limite disponível após abater faturas pagas (só quando o cartão tem limite). */
+  availableLimit?: number | null;
   purchaseCount: number;
   gradientIndex: number;
 }
@@ -89,10 +91,18 @@ export function WalletCardVisual({
             </span>
             <span className="mt-2 block text-[11px] font-medium text-white/70 sm:text-xs">
               Em aberto {formatCurrency(data.openTotal)}
-              <span className="mx-1.5 text-white/40">•</span>
-              Vence dia {data.card.due_day}
-              <span className="mx-1.5 text-white/40">•</span>
-              {data.purchaseCount} compra{data.purchaseCount !== 1 ? "s" : ""}
+              {data.nextPaymentDate ? (
+                <>
+                  <span className="mx-1.5 text-white/40">•</span>
+                  Vence {formatDateBR(data.nextPaymentDate)}
+                </>
+              ) : null}
+              {data.availableLimit != null ? (
+                <>
+                  <span className="mx-1.5 text-white/40">•</span>
+                  Disp. {formatCurrency(data.availableLimit)}
+                </>
+              ) : null}
             </span>
           </span>
           <CreditCardIcon
@@ -260,7 +270,7 @@ export function WalletDeck({
             <h2 className="mt-2 truncate text-2xl font-semibold tracking-tight xl:text-3xl">
               {frontCard.card.name}
             </h2>
-            <p className="mt-6 text-sm text-slate-400">Próxima fatura</p>
+            <p className="mt-6 text-sm text-slate-400">Próxima fatura em aberto</p>
             <p className="mt-1 text-4xl font-semibold tracking-[-0.04em] tabular-nums xl:text-5xl">
               {formatCurrency(frontCard.nextPaymentTotal)}
             </p>
@@ -271,8 +281,18 @@ export function WalletDeck({
               </span>
               {frontCard.nextPaymentDate ? (
                 <> · vence {formatDateBR(frontCard.nextPaymentDate)}</>
-              ) : null}
+              ) : (
+                <> · nenhuma fatura pendente</>
+              )}
             </p>
+            {frontCard.availableLimit != null ? (
+              <p className="mt-1 text-sm text-slate-400">
+                Limite disponível{" "}
+                <span className="font-medium text-slate-200 tabular-nums">
+                  {formatCurrency(frontCard.availableLimit)}
+                </span>
+              </p>
+            ) : null}
             {frontCardOwnTotal !== null ? (
               <p className="mt-1 text-sm text-slate-400">
                 Sua parte{" "}

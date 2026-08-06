@@ -5,6 +5,7 @@ import { Plus, ArrowUpRight, ArrowDownRight, ReceiptText } from "lucide-react";
 import { useData } from "@/components/data-provider";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { BudgetPanel } from "@/components/budget-panel";
+import { HideValuesToggle } from "@/components/hide-values-toggle";
 import { TransactionModal } from "@/components/transaction-modal";
 import { TransactionStatusBadge } from "@/components/transaction-status-badge";
 import { Card, CardTitle, CardValue } from "@/components/ui/card";
@@ -16,11 +17,13 @@ import {
   filterByMonth,
   summarizeMonth,
 } from "@/lib/budget";
+import { useHideValues } from "@/lib/hide-values";
 import { formatCurrency, formatDateBR } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 
 export default function DashboardPage() {
   const { loading, transactions, settings, categoryById } = useData();
+  const { hidden: hideValues } = useHideValues();
   const [now] = React.useState(() => new Date());
   const [year, setYear] = React.useState(now.getFullYear());
   const [month0, setMonth0] = React.useState(now.getMonth());
@@ -53,6 +56,7 @@ export default function DashboardPage() {
         description="Acompanhe o resumo financeiro e o orçamento do mês."
         actions={
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+            <HideValuesToggle />
             <MonthSwitcher
               year={year}
               month0={month0}
@@ -88,24 +92,24 @@ export default function DashboardPage() {
                   summary.balance >= 0 ? "text-income" : "text-expense"
                 }`}
               >
-                {formatCurrency(summary.balance)}
+                {formatCurrency(summary.balance, hideValues)}
               </CardValue>
             </Card>
             <Card>
               <CardTitle>Entradas</CardTitle>
               <CardValue className="break-words text-xl tabular-nums text-income sm:text-2xl">
-                {formatCurrency(summary.income)}
+                {formatCurrency(summary.income, hideValues)}
               </CardValue>
             </Card>
             <Card>
               <CardTitle>Saídas</CardTitle>
               <CardValue className="break-words text-xl tabular-nums text-expense sm:text-2xl">
-                {formatCurrency(summary.expense)}
+                {formatCurrency(summary.expense, hideValues)}
               </CardValue>
             </Card>
           </div>
 
-          <BudgetPanel budget={budget} />
+          <BudgetPanel budget={budget} hideValues={hideValues} />
 
           <Card className="p-0">
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
@@ -180,7 +184,7 @@ export default function DashboardPage() {
                             }`}
                           >
                             {t.direction === "in" ? "+" : "−"}
-                            {formatCurrency(t.amount)}
+                            {formatCurrency(t.amount, hideValues)}
                           </span>
                           <TransactionStatusBadge
                             status={t.status}

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aggregateByDueDate } from "./cards";
-import type { CardPurchase, CardSubscription, CreditCard } from "./types";
+import type { CardPurchase, CardSubscription, CreditCard, TxStatus } from "./types";
 import { toISODate } from "./utils";
 
 export async function syncCreditCardTransactions(
@@ -12,6 +12,21 @@ export async function syncCreditCardTransactions(
   userId: string
 ) {
   const today = toISODate(new Date());
+
+  const { data: existing, error: existingError } = await supabase
+    .from("transactions")
+    .select("date, status")
+    .eq("credit_card_id", card.id)
+    .eq("user_id", userId)
+    .gte("date", today);
+  if (existingError) throw existingError;
+
+  const preservedStatusByDate = new Map<string, TxStatus>();
+  for (const row of existing ?? []) {
+    if (row.status === "concluido" || row.status === "pendente" || row.status === "atrasado") {
+      preservedStatusByDate.set(row.date, row.status);
+    }
+  }
 
   await supabase
     .from("transactions")
@@ -33,7 +48,7 @@ export async function syncCreditCardTransactions(
     direction: "out" as const,
     category_id: cartaoCategoryId,
     type: "prevista" as const,
-    status: agg.dueDate < today ? ("atrasado" as const) : ("pendente" as const),
+    status: preservedStatusByDate.get(agg.dueDate) ?? ("pendente" as const),
     credit_card_id: card.id,
   }));
 

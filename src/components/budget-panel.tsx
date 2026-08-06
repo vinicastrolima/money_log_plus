@@ -6,7 +6,13 @@ import type { DailyBudget } from "@/lib/budget";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-export function BudgetPanel({ budget }: { budget: DailyBudget }) {
+export function BudgetPanel({
+  budget,
+  hideValues = false,
+}: {
+  budget: DailyBudget;
+  hideValues?: boolean;
+}) {
   const envelopePositive = budget.envelope >= 0;
   const dynamicVsTarget = budget.dailyDynamic - budget.target;
 
@@ -30,11 +36,11 @@ export function BudgetPanel({ budget }: { budget: DailyBudget }) {
             <span>Meta fixa por dia</span>
           </div>
           <p className="mt-2 break-words text-2xl font-semibold tabular-nums">
-            {formatCurrency(budget.target)}
+            {formatCurrency(budget.target, hideValues)}
           </p>
           <p className="mt-1 text-xs text-muted">
-            {formatCurrency(budget.target)} × {budget.daysInMonth} dias ={" "}
-            {formatCurrency(budget.target * budget.daysInMonth)} no mês
+            {formatCurrency(budget.target, hideValues)} × {budget.daysInMonth} dias ={" "}
+            {formatCurrency(budget.target * budget.daysInMonth, hideValues)} no mês
           </p>
         </div>
 
@@ -56,10 +62,10 @@ export function BudgetPanel({ budget }: { budget: DailyBudget }) {
                 : "text-expense"
             )}
           >
-            {formatCurrency(budget.dailyDynamic)}
+            {formatCurrency(budget.dailyDynamic, hideValues)}
           </p>
           <p className="mt-1 text-xs text-muted">
-            Saldo {formatCurrency(budget.available)} ÷ {budget.daysRemaining} dias
+            Saldo {formatCurrency(budget.available, hideValues)} ÷ {budget.daysRemaining} dias
             restantes
           </p>
         </div>
@@ -84,13 +90,14 @@ export function BudgetPanel({ budget }: { budget: DailyBudget }) {
               envelopePositive ? "text-income" : "text-expense"
             )}
           >
-            {formatCurrency(budget.envelope)}
+            {formatCurrency(budget.envelope, hideValues)}
           </span>
         </div>
         <p className="mt-1 text-xs text-muted">
           Permitido até hoje ({budget.daysElapsed} {budget.daysElapsed === 1 ? "dia" : "dias"} ×{" "}
-          {formatCurrency(budget.target)} = {formatCurrency(budget.allowedSoFar)}) −
-          gastos diários {formatCurrency(budget.spentDaily)}. O que não é gasto
+          {formatCurrency(budget.target, hideValues)} ={" "}
+          {formatCurrency(budget.allowedSoFar, hideValues)}) − gastos diários{" "}
+          {formatCurrency(budget.spentDaily, hideValues)}. O que não é gasto
           acumula para os próximos dias.
         </p>
       </div>

@@ -355,6 +355,10 @@ begin
 end;
 $$;
 
+-- Só o trigger deve executar a função; ninguém pode chamá-la via /rest/v1/rpc.
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+grant execute on function public.handle_new_user() to supabase_auth_admin;
+
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
