@@ -65,9 +65,15 @@ export interface FinancialSnapshot {
   generatedAt: string;
   currency: "BRL";
   period: {
+    today: string;
+    todayLabel: string;
     start: string;
     end: string;
     currentMonth: string;
+    currentMonthLabel: string;
+    previousMonth: string;
+    previousMonthLabel: string;
+    currentMonthMayBeIncomplete: true;
   };
   cashFlowByMonth: MonthlyCashFlow[];
   categorySpendingByMonth: CategorySpendingMonth[];
@@ -90,6 +96,31 @@ export interface FinancialSnapshot {
   budget: {
     dailyTarget: number | null;
     cycleDays: number | null;
+  };
+  adviceAnchors: {
+    referenceMonth: string;
+    referenceMonthLabel: string;
+    registeredIncome: number;
+    registeredExpenses: number;
+    projectedBalance: number;
+    percentOfIncome: {
+      p10: number;
+      p20: number;
+      p25: number;
+      p30: number;
+    };
+  } | null;
+  trendInsights: {
+    completeMonthsAnalyzed: number;
+    averageRegisteredIncome: number;
+    averageRegisteredExpenses: number;
+    averageProjectedBalance: number;
+    negativeBalanceMonths: number;
+    topExpenseCategoriesPreviousMonth: Array<{
+      category: string;
+      total: number;
+      shareOfMonthExpenses: number;
+    }>;
   };
   dataQuality: {
     transactionCount: number;
@@ -135,6 +166,23 @@ function shiftMonth(year: number, month0: number, offset: number) {
   };
 }
 
+function monthLabel(year: number, month0: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month0, 1)));
+}
+
+function dayLabel(year: number, month: number, day: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
 function getDateContext() {
   const timeZone = process.env.FINANCIAL_ASSISTANT_TIME_ZONE || "America/Maceio";
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -149,14 +197,19 @@ function getDateContext() {
   const month = read("month");
   const day = read("day");
   const current = shiftMonth(year, month - 1, 0);
+  const previous = shiftMonth(year, month - 1, -1);
   const first = shiftMonth(year, month - 1, -(MONTHS_IN_SNAPSHOT - 1));
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
   return {
     today: `${year}-${pad(month)}-${pad(day)}`,
+    todayLabel: dayLabel(year, month, day),
     start: `${first.year}-${pad(first.month0 + 1)}-01`,
     end: `${year}-${pad(month)}-${pad(lastDay)}`,
     currentMonth: `${current.year}-${pad(current.month0 + 1)}`,
+    currentMonthLabel: monthLabel(current.year, current.month0),
+    previousMonth: `${previous.year}-${pad(previous.month0 + 1)}`,
+    previousMonthLabel: monthLabel(previous.year, previous.month0),
     year,
     month0: month - 1,
   };
@@ -392,13 +445,80 @@ export async function buildFinancialSnapshot(
     (month) => month.registeredIncome > 0 || month.registeredExpenses > 0
   ).length;
 
+  const previousCashFlow = cashFlowByMonth.find(
+    (month) => month.month === dateContext.previousMonth
+  );
+  const completeMonths = cashFlowByMonth.filter(
+    (month) =>
+      month.month !== dateContext.currentMonth &&
+      (month.registeredIncome > 0 || month.registeredExpenses > 0)
+  );
+  const recentCompleteMonths = completeMonths.slice(-3);
+  const averageOrZero = (values: number[]) =>
+    values.length
+      ? roundMoney(values.reduce((total, value) => total + value, 0) / values.length)
+      : 0;
+  const previousCategoryMonth = categorySpendingByMonth.find(
+    (month) => month.month === dateContext.previousMonth
+  );
+  const previousExpenseTotal = previousCategoryMonth?.totalRegistered ?? 0;
+  const topExpenseCategoriesPreviousMonth = (previousCategoryMonth?.categories ?? [])
+    .slice(0, 5)
+    .map((category) => ({
+      category: category.category,
+      total: category.totalRegistered,
+      shareOfMonthExpenses:
+        previousExpenseTotal > 0
+          ? roundMoney((category.totalRegistered / previousExpenseTotal) * 100)
+          : 0,
+    }));
+
+  const adviceAnchors = previousCashFlow
+    ? {
+        referenceMonth: dateContext.previousMonth,
+        referenceMonthLabel: dateContext.previousMonthLabel,
+        registeredIncome: previousCashFlow.registeredIncome,
+        registeredExpenses: previousCashFlow.registeredExpenses,
+        projectedBalance: previousCashFlow.projectedBalance,
+        percentOfIncome: {
+          p10: roundMoney(previousCashFlow.registeredIncome * 0.1),
+          p20: roundMoney(previousCashFlow.registeredIncome * 0.2),
+          p25: roundMoney(previousCashFlow.registeredIncome * 0.25),
+          p30: roundMoney(previousCashFlow.registeredIncome * 0.3),
+        },
+      }
+    : null;
+
+  const trendInsights = {
+    completeMonthsAnalyzed: recentCompleteMonths.length,
+    averageRegisteredIncome: averageOrZero(
+      recentCompleteMonths.map((month) => month.registeredIncome)
+    ),
+    averageRegisteredExpenses: averageOrZero(
+      recentCompleteMonths.map((month) => month.registeredExpenses)
+    ),
+    averageProjectedBalance: averageOrZero(
+      recentCompleteMonths.map((month) => month.projectedBalance)
+    ),
+    negativeBalanceMonths: recentCompleteMonths.filter(
+      (month) => month.projectedBalance < 0
+    ).length,
+    topExpenseCategoriesPreviousMonth,
+  };
+
   return {
     generatedAt: dateContext.today,
     currency: "BRL",
     period: {
+      today: dateContext.today,
+      todayLabel: dateContext.todayLabel,
       start: dateContext.start,
       end: dateContext.end,
       currentMonth: dateContext.currentMonth,
+      currentMonthLabel: dateContext.currentMonthLabel,
+      previousMonth: dateContext.previousMonth,
+      previousMonthLabel: dateContext.previousMonthLabel,
+      currentMonthMayBeIncomplete: true,
     },
     cashFlowByMonth,
     categorySpendingByMonth,
@@ -420,13 +540,18 @@ export async function buildFinancialSnapshot(
       dailyTarget: settings ? roundMoney(amount(settings.daily_target)) : null,
       cycleDays: settings?.cycle_days ?? null,
     },
+    adviceAnchors,
+    trendInsights,
     dataQuality: {
       transactionCount: transactions.length,
       cardPurchaseCount: purchases.length,
       monthsWithData,
       notes: [
+        `Hoje é ${dateContext.todayLabel}. Mês atual: ${dateContext.currentMonthLabel} (pode estar incompleto). Mês passado: ${dateContext.previousMonthLabel}.`,
         "Fluxo de caixa usa os lançamentos registrados e inclui faturas de cartão geradas pelo aplicativo.",
         "Gastos por categoria excluem essas faturas agregadas e usam as compras de cartão na data e no valor total da compra, evitando dupla contagem.",
+        "Para percentuais da renda (ex.: 25%), use adviceAnchors.percentOfIncome — valores já calculados.",
+        "trendInsights resume média dos últimos meses completos e maiores categorias do mês passado — use para avaliar viabilidade de metas.",
         "Descrições de transações, compras e assinaturas não são enviadas ao modelo.",
       ],
     },
