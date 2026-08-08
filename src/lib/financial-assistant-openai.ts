@@ -9,7 +9,7 @@ import type {
   FinancialAssistantStatus,
 } from "./financial-assistant-types";
 
-const DEFAULT_MODEL = "gpt-5-mini-2025-08-07";
+const DEFAULT_MODEL = "gpt-5.6-luna";
 const DEFAULT_DISCLAIMER =
   "Análise informativa baseada nos dados registrados. Não substitui orientação financeira profissional.";
 
@@ -136,7 +136,7 @@ export async function analyzeFinancialSnapshot(input: {
   const client = new OpenAI({
     apiKey,
     maxRetries: 1,
-    timeout: 45_000,
+    timeout: 60_000,
   });
   const response = await client.responses.create({
     model: process.env.OPENAI_FINANCIAL_MODEL || DEFAULT_MODEL,
