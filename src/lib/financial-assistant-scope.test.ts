@@ -24,6 +24,15 @@ describe("assessFinancialScope", () => {
   it("permite perguntas financeiras", () => {
     expect(assessFinancialScope("Qual meu saldo do mês?", [])).toBe("allowed");
     expect(assessFinancialScope("fatura do cartão", [])).toBe("allowed");
+    expect(
+      assessFinancialScope(
+        "Minha saúde financeira desse mês está boa? faça um apanhado geral",
+        []
+      )
+    ).toBe("allowed");
+    expect(assessFinancialScope("faz um resumo das minhas finanças", [])).toBe(
+      "allowed"
+    );
   });
 
   it("bloqueia fora de escopo", () => {
