@@ -1,7 +1,22 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  aggregateByDueDate,
+  cardAvailableLimit,
+  cardClosingDay,
+  cardInvoiceStatusByDate,
+  cardNextPayment,
+  cardOpenTotal,
+} from "./cards";
 import { sanitizeFinancialLabel } from "./financial-assistant-scope";
+import type {
+  CardPurchase,
+  CardSubscription,
+  CreditCard,
+  TxStatus,
+} from "./types";
+import { parseISODate } from "./utils";
 
 type TransactionRow = {
   date: string;
@@ -13,22 +28,50 @@ type TransactionRow = {
   credit_card_id: string | null;
 };
 
+type InvoiceTransactionRow = {
+  date: string;
+  status: TxStatus;
+  direction: "in" | "out";
+  credit_card_id: string | null;
+};
+
 type CategoryRow = {
   id: string;
   name: string;
 };
 
+type CreditCardRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  due_day: number;
+  closing_day: number | null;
+  credit_limit: number | string | null;
+  created_at: string;
+};
+
 type CardPurchaseRow = {
+  id: string;
+  user_id: string;
+  credit_card_id: string;
   purchase_date: string;
   total_amount: number | string;
+  installments: number;
   category_id: string | null;
   is_shared: boolean | null;
   own_amount: number | string | null;
+  created_at: string;
 };
 
 type SubscriptionRow = {
+  id: string;
+  user_id: string;
+  credit_card_id: string;
   amount: number | string;
   category_id: string | null;
+  start_date: string;
+  active: boolean;
+  created_at: string;
 };
 
 type SettingsRow = {
@@ -77,6 +120,17 @@ export interface FinancialSnapshot {
   };
   cashFlowByMonth: MonthlyCashFlow[];
   categorySpendingByMonth: CategorySpendingMonth[];
+  incomeByCategoryByMonth: Array<{
+    month: string;
+    totalRegistered: number;
+    salaryIncome: number;
+    extraIncome: number;
+    categories: Array<{
+      category: string;
+      total: number;
+      isSalary: boolean;
+    }>;
+  }>;
   largestRegisteredExpenses: Array<{
     date: string;
     amount: number;
@@ -93,6 +147,35 @@ export interface FinancialSnapshot {
       estimatedMonthlyTotal: number;
     }>;
   };
+  cardsSummary: {
+    count: number;
+    totalCreditLimit: number | null;
+    totalOpen: number;
+    totalAvailable: number | null;
+    cards: Array<{
+      name: string;
+      dueDay: number;
+      closingDay: number;
+      creditLimit: number | null;
+      openTotal: number;
+      availableLimit: number | null;
+      nextInvoice: {
+        dueDate: string;
+        dueDateLabel: string;
+        amount: number;
+        status: "pendente" | "atrasado" | "futura";
+      } | null;
+      upcomingInvoices: Array<{
+        dueDate: string;
+        dueDateLabel: string;
+        amount: number;
+        status: "pendente" | "atrasado" | "futura" | "pago";
+      }>;
+      activeSubscriptionsCount: number;
+      activeSubscriptionsMonthlyTotal: number;
+      purchasesInPeriod: number;
+    }>;
+  };
   budget: {
     dailyTarget: number | null;
     cycleDays: number | null;
@@ -101,6 +184,8 @@ export interface FinancialSnapshot {
     referenceMonth: string;
     referenceMonthLabel: string;
     registeredIncome: number;
+    salaryIncome: number;
+    extraIncome: number;
     registeredExpenses: number;
     projectedBalance: number;
     percentOfIncome: {
@@ -108,7 +193,20 @@ export interface FinancialSnapshot {
       p20: number;
       p25: number;
       p30: number;
+      p50: number;
     };
+    percentOfSalary: {
+      p10: number;
+      p20: number;
+      p25: number;
+      p30: number;
+      p50: number;
+    } | null;
+    rule502030OnSalary: {
+      needs: number;
+      wants: number;
+      savingsOrDebt: number;
+    } | null;
   } | null;
   trendInsights: {
     completeMonthsAnalyzed: number;
@@ -134,6 +232,31 @@ interface CategoryBucket {
   category: string;
   nonCardExpenses: number;
   cardPurchases: number;
+}
+
+interface IncomeCategoryBucket {
+  category: string;
+  total: number;
+  isSalary: boolean;
+}
+
+function isSalaryCategoryName(name: string) {
+  const normalized = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  return normalized === "salario" || normalized.startsWith("salario ");
+}
+
+function percentBuckets(base: number) {
+  return {
+    p10: roundMoney(base * 0.1),
+    p20: roundMoney(base * 0.2),
+    p25: roundMoney(base * 0.25),
+    p30: roundMoney(base * 0.3),
+    p50: roundMoney(base * 0.5),
+  };
 }
 
 interface LargestExpense {
@@ -244,32 +367,51 @@ export async function buildFinancialSnapshot(
   const dateContext = getDateContext();
   const monthKeys = createMonthKeys(dateContext.year, dateContext.month0);
 
-  const [categoriesResult, transactionsResult, purchasesResult, subscriptionsResult, settingsResult] =
-    await Promise.all([
-      supabase.from("categories").select("id,name").eq("user_id", userId),
-      supabase
-        .from("transactions")
-        .select("date,amount,direction,category_id,type,status,credit_card_id")
-        .eq("user_id", userId)
-        .gte("date", dateContext.start)
-        .lte("date", dateContext.end),
-      supabase
-        .from("card_purchases")
-        .select("purchase_date,total_amount,category_id,is_shared,own_amount")
-        .eq("user_id", userId)
-        .gte("purchase_date", dateContext.start)
-        .lte("purchase_date", dateContext.end),
-      supabase
-        .from("card_subscriptions")
-        .select("amount,category_id")
-        .eq("user_id", userId)
-        .eq("active", true),
-      supabase
-        .from("settings")
-        .select("daily_target,cycle_days")
-        .eq("user_id", userId)
-        .maybeSingle(),
-    ]);
+  const [
+    categoriesResult,
+    transactionsResult,
+    purchasesResult,
+    subscriptionsResult,
+    settingsResult,
+    cardsResult,
+    invoiceTxResult,
+  ] = await Promise.all([
+    supabase.from("categories").select("id,name").eq("user_id", userId),
+    supabase
+      .from("transactions")
+      .select("date,amount,direction,category_id,type,status,credit_card_id")
+      .eq("user_id", userId)
+      .gte("date", dateContext.start)
+      .lte("date", dateContext.end),
+    supabase
+      .from("card_purchases")
+      .select(
+        "id,user_id,credit_card_id,purchase_date,total_amount,installments,category_id,is_shared,own_amount,created_at"
+      )
+      .eq("user_id", userId),
+    supabase
+      .from("card_subscriptions")
+      .select(
+        "id,user_id,credit_card_id,amount,category_id,start_date,active,created_at"
+      )
+      .eq("user_id", userId)
+      .eq("active", true),
+    supabase
+      .from("settings")
+      .select("daily_target,cycle_days")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("credit_cards")
+      .select("id,user_id,name,due_day,closing_day,credit_limit,created_at")
+      .eq("user_id", userId)
+      .order("name"),
+    supabase
+      .from("transactions")
+      .select("date,status,direction,credit_card_id")
+      .eq("user_id", userId)
+      .not("credit_card_id", "is", null),
+  ]);
 
   const firstError = [
     categoriesResult.error,
@@ -277,6 +419,8 @@ export async function buildFinancialSnapshot(
     purchasesResult.error,
     subscriptionsResult.error,
     settingsResult.error,
+    cardsResult.error,
+    invoiceTxResult.error,
   ].find(Boolean);
   if (firstError) throw new Error("Não foi possível montar o resumo financeiro.");
 
@@ -285,6 +429,13 @@ export async function buildFinancialSnapshot(
   const purchases = (purchasesResult.data ?? []) as CardPurchaseRow[];
   const subscriptions = (subscriptionsResult.data ?? []) as SubscriptionRow[];
   const settings = settingsResult.data as SettingsRow | null;
+  const creditCards = (cardsResult.data ?? []) as CreditCardRow[];
+  const invoiceTransactions = (invoiceTxResult.data ?? []) as InvoiceTransactionRow[];
+  const todayDate = parseISODate(dateContext.today);
+  const purchasesInPeriodCount = purchases.filter((purchase) => {
+    const month = monthKey(purchase.purchase_date);
+    return month >= dateContext.start.slice(0, 7) && month <= dateContext.currentMonth;
+  }).length;
   const categoryNames = new Map(
     categories.map((category) => [
       category.id,
@@ -311,6 +462,7 @@ export async function buildFinancialSnapshot(
     ])
   );
   const categoryBuckets = new Map<string, CategoryBucket>();
+  const incomeBuckets = new Map<string, IncomeCategoryBucket>();
   const largestExpenses: LargestExpense[] = [];
 
   function getCategoryBucket(month: string, categoryId: string | null) {
@@ -327,6 +479,21 @@ export async function buildFinancialSnapshot(
     return created;
   }
 
+  function getIncomeBucket(month: string, categoryId: string | null) {
+    const key = `${month}:${categoryId ?? "none"}`;
+    const existing = incomeBuckets.get(key);
+    if (existing) return existing;
+
+    const category = categoryName(categoryId);
+    const created: IncomeCategoryBucket = {
+      category,
+      total: 0,
+      isSalary: isSalaryCategoryName(category),
+    };
+    incomeBuckets.set(key, created);
+    return created;
+  }
+
   for (const transaction of transactions) {
     const month = monthKey(transaction.date);
     const monthly = cashFlowMap.get(month);
@@ -335,6 +502,7 @@ export async function buildFinancialSnapshot(
 
     if (transaction.direction === "in") {
       monthly.registeredIncome += value;
+      getIncomeBucket(month, transaction.category_id).total += value;
       continue;
     }
 
@@ -419,6 +587,35 @@ export async function buildFinancialSnapshot(
     };
   });
 
+  const incomeByCategoryByMonth = monthKeys.map((month) => {
+    const categoriesForMonth = [...incomeBuckets.entries()]
+      .filter(([key]) => key.startsWith(`${month}:`))
+      .map(([, bucket]) => ({
+        category: bucket.category,
+        total: roundMoney(bucket.total),
+        isSalary: bucket.isSalary,
+      }))
+      .filter((category) => category.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    const salaryIncome = roundMoney(
+      categoriesForMonth
+        .filter((category) => category.isSalary)
+        .reduce((total, category) => total + category.total, 0)
+    );
+    const totalRegistered = roundMoney(
+      categoriesForMonth.reduce((total, category) => total + category.total, 0)
+    );
+
+    return {
+      month,
+      totalRegistered,
+      salaryIncome,
+      extraIncome: roundMoney(totalRegistered - salaryIncome),
+      categories: categoriesForMonth,
+    };
+  });
+
   const subscriptionBuckets = new Map<
     string,
     { category: string; count: number; estimatedMonthlyTotal: number }
@@ -473,19 +670,31 @@ export async function buildFinancialSnapshot(
           : 0,
     }));
 
+  const previousIncomeBreakdown = incomeByCategoryByMonth.find(
+    (month) => month.month === dateContext.previousMonth
+  );
+  const previousSalaryIncome = previousIncomeBreakdown?.salaryIncome ?? 0;
+  const previousExtraIncome = previousIncomeBreakdown?.extraIncome ?? 0;
   const adviceAnchors = previousCashFlow
     ? {
         referenceMonth: dateContext.previousMonth,
         referenceMonthLabel: dateContext.previousMonthLabel,
         registeredIncome: previousCashFlow.registeredIncome,
+        salaryIncome: previousSalaryIncome,
+        extraIncome: previousExtraIncome,
         registeredExpenses: previousCashFlow.registeredExpenses,
         projectedBalance: previousCashFlow.projectedBalance,
-        percentOfIncome: {
-          p10: roundMoney(previousCashFlow.registeredIncome * 0.1),
-          p20: roundMoney(previousCashFlow.registeredIncome * 0.2),
-          p25: roundMoney(previousCashFlow.registeredIncome * 0.25),
-          p30: roundMoney(previousCashFlow.registeredIncome * 0.3),
-        },
+        percentOfIncome: percentBuckets(previousCashFlow.registeredIncome),
+        percentOfSalary:
+          previousSalaryIncome > 0 ? percentBuckets(previousSalaryIncome) : null,
+        rule502030OnSalary:
+          previousSalaryIncome > 0
+            ? {
+                needs: roundMoney(previousSalaryIncome * 0.5),
+                wants: roundMoney(previousSalaryIncome * 0.2),
+                savingsOrDebt: roundMoney(previousSalaryIncome * 0.3),
+              }
+            : null,
       }
     : null;
 
@@ -506,6 +715,161 @@ export async function buildFinancialSnapshot(
     topExpenseCategoriesPreviousMonth,
   };
 
+  const typedPurchases: CardPurchase[] = purchases.map((purchase) => ({
+    id: purchase.id,
+    user_id: purchase.user_id,
+    credit_card_id: purchase.credit_card_id,
+    description: "",
+    total_amount: amount(purchase.total_amount),
+    installments: purchase.installments,
+    purchase_date: purchase.purchase_date,
+    category_id: purchase.category_id,
+    is_shared: Boolean(purchase.is_shared),
+    own_amount:
+      purchase.own_amount == null ? null : amount(purchase.own_amount),
+    created_at: purchase.created_at,
+  }));
+  const typedSubscriptions: CardSubscription[] = subscriptions.map(
+    (subscription) => ({
+      id: subscription.id,
+      user_id: subscription.user_id,
+      credit_card_id: subscription.credit_card_id,
+      description: "",
+      amount: amount(subscription.amount),
+      category_id: subscription.category_id,
+      start_date: subscription.start_date,
+      active: subscription.active,
+      created_at: subscription.created_at,
+    })
+  );
+
+  function invoiceDueLabel(dueDate: string) {
+    const [year, month] = dueDate.split("-").map(Number);
+    const day = Number(dueDate.slice(8, 10));
+    return `${pad(day)}/${pad(month)}/${year} (${monthLabel(year, month - 1)})`;
+  }
+
+  function invoiceStatusLabel(
+    status: TxStatus | undefined,
+    dueDate: string
+  ): "pendente" | "atrasado" | "futura" | "pago" {
+    if (status === "concluido") return "pago";
+    if (status === "atrasado") return "atrasado";
+    if (status === "pendente") return "pendente";
+    return dueDate < dateContext.today ? "atrasado" : "futura";
+  }
+
+  const cardSummaries = creditCards.map((cardRow) => {
+    const card: CreditCard = {
+      id: cardRow.id,
+      user_id: cardRow.user_id,
+      name: cardRow.name,
+      due_day: cardRow.due_day,
+      closing_day: cardRow.closing_day,
+      credit_limit:
+        cardRow.credit_limit == null ? null : amount(cardRow.credit_limit),
+      created_at: cardRow.created_at,
+    };
+    const cardPurchases = typedPurchases.filter(
+      (purchase) => purchase.credit_card_id === card.id
+    );
+    const cardSubscriptions = typedSubscriptions.filter(
+      (subscription) => subscription.credit_card_id === card.id
+    );
+    const invoiceStatus = cardInvoiceStatusByDate(invoiceTransactions, card.id);
+    const openTotal = cardOpenTotal(
+      cardPurchases,
+      card,
+      todayDate,
+      invoiceStatus
+    );
+    const creditLimit =
+      card.credit_limit == null ? null : roundMoney(card.credit_limit);
+    const availableLimit = cardAvailableLimit(creditLimit, openTotal);
+    const next = cardNextPayment(
+      cardPurchases,
+      card,
+      cardSubscriptions,
+      todayDate,
+      invoiceStatus
+    );
+    const upcomingInvoices = aggregateByDueDate(
+      cardPurchases,
+      card,
+      cardSubscriptions
+    )
+      .filter((payment) => payment.dueDate >= dateContext.today)
+      .slice(0, 4)
+      .map((payment) => ({
+        dueDate: payment.dueDate,
+        dueDateLabel: invoiceDueLabel(payment.dueDate),
+        amount: roundMoney(payment.total),
+        status: invoiceStatusLabel(
+          invoiceStatus.get(payment.dueDate),
+          payment.dueDate
+        ),
+      }));
+    const activeSubscriptionsMonthlyTotal = roundMoney(
+      cardSubscriptions.reduce(
+        (total, subscription) => total + subscription.amount,
+        0
+      )
+    );
+
+    return {
+      name: sanitizeFinancialLabel(card.name),
+      dueDay: card.due_day,
+      closingDay: cardClosingDay(card),
+      creditLimit,
+      openTotal: roundMoney(openTotal),
+      availableLimit:
+        availableLimit == null ? null : roundMoney(availableLimit),
+      nextInvoice: next
+        ? {
+            dueDate: next.dueDate,
+            dueDateLabel: invoiceDueLabel(next.dueDate),
+            amount: roundMoney(next.total),
+            status: invoiceStatusLabel(
+              invoiceStatus.get(next.dueDate),
+              next.dueDate
+            ) as "pendente" | "atrasado" | "futura",
+          }
+        : null,
+      upcomingInvoices,
+      activeSubscriptionsCount: cardSubscriptions.length,
+      activeSubscriptionsMonthlyTotal,
+      purchasesInPeriod: cardPurchases.filter((purchase) => {
+        const month = monthKey(purchase.purchase_date);
+        return (
+          month >= dateContext.start.slice(0, 7) &&
+          month <= dateContext.currentMonth
+        );
+      }).length,
+    };
+  });
+
+  const cardsWithLimit = cardSummaries.filter(
+    (card) => card.creditLimit != null
+  );
+  const totalCreditLimit = cardsWithLimit.length
+    ? roundMoney(
+        cardsWithLimit.reduce((total, card) => total + (card.creditLimit ?? 0), 0)
+      )
+    : null;
+  const totalOpen = roundMoney(
+    cardSummaries.reduce((total, card) => total + card.openTotal, 0)
+  );
+  const cardsSummary = {
+    count: cardSummaries.length,
+    totalCreditLimit,
+    totalOpen,
+    totalAvailable:
+      totalCreditLimit == null
+        ? null
+        : roundMoney(Math.max(totalCreditLimit - totalOpen, 0)),
+    cards: cardSummaries,
+  };
+
   return {
     generatedAt: dateContext.today,
     currency: "BRL",
@@ -522,6 +886,7 @@ export async function buildFinancialSnapshot(
     },
     cashFlowByMonth,
     categorySpendingByMonth,
+    incomeByCategoryByMonth,
     largestRegisteredExpenses: largestExpenses
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 8)
@@ -536,6 +901,7 @@ export async function buildFinancialSnapshot(
       ),
       byCategory: subscriptionsByCategory,
     },
+    cardsSummary,
     budget: {
       dailyTarget: settings ? roundMoney(amount(settings.daily_target)) : null,
       cycleDays: settings?.cycle_days ?? null,
@@ -544,13 +910,16 @@ export async function buildFinancialSnapshot(
     trendInsights,
     dataQuality: {
       transactionCount: transactions.length,
-      cardPurchaseCount: purchases.length,
+      cardPurchaseCount: purchasesInPeriodCount,
       monthsWithData,
       notes: [
         `Hoje é ${dateContext.todayLabel}. Mês atual: ${dateContext.currentMonthLabel} (pode estar incompleto). Mês passado: ${dateContext.previousMonthLabel}.`,
         "Fluxo de caixa usa os lançamentos registrados e inclui faturas de cartão geradas pelo aplicativo.",
         "Gastos por categoria excluem essas faturas agregadas e usam as compras de cartão na data e no valor total da compra, evitando dupla contagem.",
-        "Para percentuais da renda (ex.: 25%), use adviceAnchors.percentOfIncome — valores já calculados.",
+        "cardsSummary traz cada cartão: nome, fechamento, vencimento, limite, aberto, disponível, próxima fatura e próximas faturas.",
+        "incomeByCategoryByMonth quebra entradas por categoria; isSalary=true marca categoria Salário. O restante é extra.",
+        "Para regras tipo 50/20/30 sobre salário, use adviceAnchors.rule502030OnSalary e percentOfSalary.",
+        "percentOfIncome usa a renda total; percentOfSalary usa só a categoria Salário.",
         "trendInsights resume média dos últimos meses completos e maiores categorias do mês passado — use para avaliar viabilidade de metas.",
         "Descrições de transações, compras e assinaturas não são enviadas ao modelo.",
       ],

@@ -43,10 +43,17 @@ DATAS
 - Hoje = period.todayLabel. Mês atual pode estar incompleto. "mês passado" = period.previousMonthLabel.
 - Planejamento/reserva: base em adviceAnchors + trendInsights; diga qual mês/média usou.
 
-CONTAS
-- 10/20/25/30% da renda: use adviceAnchors.percentOfIncome.
-- Outros %: calcule a partir da renda citada e mantenha answer ↔ highlights consistentes.
-- Sem renda → insufficient_data.
+RENDA E SALÁRIO
+- incomeByCategoryByMonth mostra entradas por categoria. Categorias com isSalary=true são salário; o restante é extra.
+- Se o usuário pedir para usar só salário / tratar o resto como extra, use salaryIncome e extraIncome (não diga que isso é impossível).
+- 50/20/30 sobre salário: use adviceAnchors.rule502030OnSalary (needs 50%, wants 20%, savingsOrDebt 30%).
+- Percentuais da renda total: adviceAnchors.percentOfIncome. Percentuais só do salário: percentOfSalary.
+- Sem renda → insufficient_data. Sem salário classificado, diga isso e use a renda total só se o usuário aceitar.
+
+CARTÕES
+- Use cardsSummary para perguntas de cartão (Nubank, C6, fatura, limite, disponível, vencimento).
+- Compare cartões pelo nome (ignore maiúsculas/acentos). Cite fechamento/vencimento quando relevante.
+- Próxima fatura e upcomingInvoices já vêm calculadas; não invente valores de fatura.
 
 CATEGORIAS
 - Ignore maiúsculas, acentos, emojis e pontuação ("monster" = "Monster ⚡").
@@ -149,13 +156,17 @@ export async function analyzeFinancialSnapshot(input: {
         currentMonth: "Mês atual (pode estar incompleto).",
         previousMonth: "Mês passado completo — use para metas e percentuais.",
         adviceAnchors:
-          "Renda/despesa do mês passado e percentuais p10/p20/p25/p30 já calculados.",
+          "Renda total, salário, extra, percentuais e regra 50/20/30 sobre salário já calculados.",
+        incomeByCategoryByMonth:
+          "Entradas por categoria e mês. isSalary=true = Salário; o restante é extra.",
         trendInsights:
           "Médias dos últimos meses completos, meses negativos e top categorias do mês passado — use para avaliar viabilidade de metas.",
         cashFlowByMonth:
           "Totais mensais de receitas/despesas, incluindo faturas de cartão geradas pelo app.",
         categorySpendingByMonth:
           "Gastos por categoria no mês; use para perguntas de categoria.",
+        cardsSummary:
+          "Cartões um a um: nome, fechamento, vencimento, limite, aberto, disponível, próxima fatura e próximas faturas.",
         largestRegisteredExpenses: "Maiores gastos do período (sem descrições).",
         activeSubscriptions: "Assinaturas ativas estimadas por mês.",
         budget: "Meta diária e ciclo configurados.",
