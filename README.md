@@ -103,7 +103,10 @@ Projetos mais antigos também podem mostrar uma chave legada chamada **anon**. A
 
 > Nunca use uma **Secret key** ou a chave `service_role`. Elas ignoram as políticas RLS e não podem ser expostas no navegador.
 
-Se o projeto Supabase já existia antes da inclusão do assistente financeiro, execute também o arquivo [`supabase/migrations/20260720000000_financial_assistant_rate_limit.sql`](supabase/migrations/20260720000000_financial_assistant_rate_limit.sql) no **SQL Editor**. Ele cria apenas o controle de 20 análises por usuário a cada hora; perguntas, respostas e dados financeiros não são armazenados nessa tabela.
+Se o projeto Supabase já existia antes da inclusão do assistente financeiro, execute também as migrations em [`supabase/migrations/`](supabase/migrations/) no **SQL Editor**, em especial:
+
+- [`20260720000000_financial_assistant_rate_limit.sql`](supabase/migrations/20260720000000_financial_assistant_rate_limit.sql) — controle de 20 análises por usuário a cada hora;
+- [`20260808210000_assistant_memory.sql`](supabase/migrations/20260808210000_assistant_memory.sql) — conversas persistidas e memória declarativa por usuário.
 
 ### 4. Configure as variáveis de ambiente
 
@@ -120,6 +123,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_SUA_CHAVE_PUBLICA
 OPENAI_API_KEY=sk-proj-SUA_CHAVE_OPENAI
 OPENAI_FINANCIAL_MODEL=gpt-5-nano-2025-08-07
+OPENAI_MEMORY_MODEL=gpt-5-nano-2025-08-07
 FINANCIAL_ASSISTANT_TIME_ZONE=America/Maceio
 ```
 
@@ -129,6 +133,7 @@ FINANCIAL_ASSISTANT_TIME_ZONE=America/Maceio
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key ou chave legada `anon` |
 | `OPENAI_API_KEY` | Chave secreta da OpenAI, disponível somente no servidor |
 | `OPENAI_FINANCIAL_MODEL` | Modelo do assistente; por padrão, o snapshot econômico `gpt-5-nano-2025-08-07` |
+| `OPENAI_MEMORY_MODEL` | Modelo barato usado só para extrair fatos de memória; padrão `gpt-5-nano-2025-08-07` |
 | `FINANCIAL_ASSISTANT_TIME_ZONE` | Fuso usado para determinar o mês atual; padrão `America/Maceio` |
 
 O arquivo `.env.local` já está ignorado pelo Git. Não envie credenciais reais para o repositório. Em especial, nunca renomeie `OPENAI_API_KEY` para uma variável com prefixo `NEXT_PUBLIC_`.
@@ -186,12 +191,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_SUA_CHAVE_PUBLICA
 OPENAI_API_KEY=sk-proj-SUA_CHAVE_OPENAI
 OPENAI_FINANCIAL_MODEL=gpt-5-nano-2025-08-07
+OPENAI_MEMORY_MODEL=gpt-5-nano-2025-08-07
 FINANCIAL_ASSISTANT_TIME_ZONE=America/Maceio
 ```
 
 Marque pelo menos **Production**. Se quiser que deployments de pull requests também funcionem, marque **Preview**. Você pode usar o mesmo Supabase nos dois ambientes para uma instalação pessoal; em equipes, prefira projetos Supabase separados para não misturar dados de teste e produção.
 
-As três variáveis do assistente não usam `NEXT_PUBLIC_` e ficam disponíveis apenas nas funções do servidor da Vercel.
+As variáveis do assistente não usam `NEXT_PUBLIC_` e ficam disponíveis apenas nas funções do servidor da Vercel.
 
 6. Clique em **Deploy**.
 7. Ao terminar, abra a URL gerada, semelhante a `https://seu-projeto.vercel.app`.
@@ -238,9 +244,9 @@ Somente saídas marcadas como **gasto diário** consomem a meta. A aplicação u
 
 O botão **Pergunte à IA** aparece nas páginas autenticadas. Cada solicitação passa por validação de origem, sessão, tamanho, escopo financeiro e rate limiting antes de chamar a OpenAI.
 
-O modelo não acessa o Supabase e não recebe ferramentas. O servidor calcula um resumo dos últimos 12 meses e envia somente valores agregados, nomes de categorias sanitizados e indicadores de orçamento. Descrições de transações, compras e assinaturas não são enviadas. Perguntas fora do domínio financeiro ou com sinais de prompt injection recebem uma resposta fixa sem consumir tokens da OpenAI.
+O modelo não acessa o Supabase e não recebe ferramentas. O servidor calcula um resumo dos últimos 12 meses e envia somente valores agregados, nomes de categorias sanitizados, indicadores de orçamento e um bloco curto de memória do usuário. Descrições de transações, compras e assinaturas não são enviadas. Perguntas fora do domínio financeiro ou com sinais de prompt injection recebem uma resposta fixa sem consumir tokens da OpenAI.
 
-O histórico existe somente no navegador durante a sessão aberta e é limitado às seis mensagens mais recentes em cada chamada. A API usa Structured Outputs, `store: false`, um identificador de segurança anonimizado e o snapshot fixo do `gpt-5-nano` por padrão.
+Conversas e mensagens ficam persistidas no Supabase por usuário. Em cada análise, o servidor carrega as seis mensagens mais recentes da conversa e um conjunto enxuto de fatos declarativos (metas, preferências, restrições). A extração de novos fatos roda em segundo plano com `OPENAI_MEMORY_MODEL`, sem atrasar a resposta. Na página **Categorias**, o botão **Limpar memória e conversas** apaga esses dados. A API usa Structured Outputs, `store: false`, um identificador de segurança anonimizado e o snapshot fixo do `gpt-5-nano` por padrão.
 
 ### Estimativa de custo da IA
 

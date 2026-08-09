@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2, Tags, Target } from "lucide-react";
+import { Brain, Plus, Pencil, Trash2, Tags, Target } from "lucide-react";
 import { useData } from "@/components/data-provider";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export default function CategoriesPage() {
 
   const [target, setTarget] = React.useState<string | null>(null);
   const targetValue = target ?? (settings ? String(settings.daily_target) : "");
+  const [purgingMemory, setPurgingMemory] = React.useState(false);
 
   function openNew() {
     setEditing(null);
@@ -91,6 +92,36 @@ export default function CategoriesPage() {
     const val = Number(targetValue.replace(",", "."));
     if (!Number.isFinite(val) || val < 0) return;
     await updateSettings({ daily_target: val });
+  }
+
+  async function handlePurgeAssistantMemory() {
+    if (
+      !confirm(
+        "Limpar a memória e as conversas do assistente? Essa ação não pode ser desfeita."
+      )
+    ) {
+      return;
+    }
+
+    setPurgingMemory(true);
+    try {
+      const response = await fetch("/api/financial-assistant/purge", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error("purge_failed");
+      }
+      try {
+        window.localStorage.removeItem("money-log-assistant-conversation-id");
+      } catch {
+        // ignore
+      }
+      alert("Memória e conversas do assistente foram limpas.");
+    } catch {
+      alert("Não foi possível limpar a memória agora. Tente novamente.");
+    } finally {
+      setPurgingMemory(false);
+    }
   }
 
   return (
@@ -142,6 +173,30 @@ export default function CategoriesPage() {
               </strong>
             </span>
           )}
+        </div>
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Brain size={17} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Memória do assistente</p>
+            <p className="mt-1 text-xs text-muted">
+              A IA guarda preferências e conversas por usuário. Você pode apagar tudo a qualquer momento.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <Button
+            className="w-full sm:w-auto"
+            variant="secondary"
+            disabled={purgingMemory}
+            onClick={() => void handlePurgeAssistantMemory()}
+          >
+            {purgingMemory ? "Limpando…" : "Limpar memória e conversas"}
+          </Button>
         </div>
       </Card>
 

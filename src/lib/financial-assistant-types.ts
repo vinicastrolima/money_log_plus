@@ -14,6 +14,8 @@ export interface FinancialAssistantHistoryItem {
 
 export interface FinancialAssistantRequest {
   question: string;
+  conversationId?: string;
+  /** @deprecated Histórico agora vem do banco; o campo é ignorado. */
   history?: FinancialAssistantHistoryItem[];
 }
 
@@ -23,6 +25,22 @@ export interface FinancialAssistantResponse {
   highlights: string[];
   period: string;
   disclaimer: string;
+  conversationId?: string;
+}
+
+export interface FinancialAssistantConversationMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  status?: string | null;
+  highlights?: string[];
+  period?: string | null;
+  createdAt: string;
+}
+
+export interface FinancialAssistantConversationResponse {
+  conversationId: string;
+  messages: FinancialAssistantConversationMessage[];
 }
 
 export interface FinancialAssistantErrorResponse {
@@ -31,6 +49,7 @@ export interface FinancialAssistantErrorResponse {
     | "invalid_request"
     | "unauthorized"
     | "forbidden"
+    | "not_found"
     | "rate_limited"
     | "not_configured"
     | "service_unavailable";
