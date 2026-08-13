@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Banknote,
   CalendarClock,
   Pencil,
   Plus,
@@ -9,25 +10,25 @@ import {
   Repeat2,
   ShoppingBag,
   Trash2,
-  Users,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { DateInput, Input, Label, Select } from "@/components/ui/input";
-import { ToggleField } from "@/components/ui/toggle-field";
 import { WalletCardVisual } from "@/components/cards/wallet-stack";
 import {
   CARD_GRADIENTS,
+  aggregateByDueDate,
   cardAvailableLimit,
   cardClosingDay,
   cardInvoiceStatusByDate,
   cardNextPayment,
   cardOpenTotals,
-  purchaseOwnAmount,
+  invoiceDateKey,
   splitInstallments,
 } from "@/lib/cards";
 import { cn, formatCurrency, formatDateBR, toISODate } from "@/lib/utils";
 import type {
+  CardInvoicePrepayment,
   CardPurchase,
   CardSubscription,
   Category,
@@ -43,10 +44,10 @@ interface Props {
   gradientIndex: number;
   purchases: CardPurchase[];
   subscriptions: CardSubscription[];
+  prepayments: CardInvoicePrepayment[];
   transactions?: Transaction[];
   categories: Category[];
   openPurchaseOnMount?: boolean;
-  sharedPurchasesEnabled?: boolean;
   onSaveCard: (input: CreditCardInput) => Promise<void>;
   onDeleteCard: () => Promise<void>;
   onSavePurchase: (input: {
@@ -56,10 +57,15 @@ interface Props {
     installments: number;
     purchase_date: string;
     category_id: string | null;
-    is_shared: boolean;
-    own_amount: number | null;
   }) => Promise<void>;
   onDeletePurchase: (id: string) => Promise<void>;
+  onSavePrepayment: (input: {
+    invoice_due_date: string;
+    amount: number;
+    payment_date: string;
+    description: string;
+  }) => Promise<void>;
+  onDeletePrepayment: (id: string) => Promise<void>;
   onSaveSubscription: (input: {
     id?: string;
     description: string;
@@ -94,14 +100,16 @@ function CardDetailModalContent({
   gradientIndex,
   purchases,
   subscriptions,
+  prepayments,
   transactions = [],
   categories,
   openPurchaseOnMount,
-  sharedPurchasesEnabled = false,
   onSaveCard,
   onDeleteCard,
   onSavePurchase,
   onDeletePurchase,
+  onSavePrepayment,
+  onDeletePrepayment,
   onSaveSubscription,
   onDeleteSubscription,
 }: Props) {
@@ -128,8 +136,11 @@ function CardDetailModalContent({
   const [categoryId, setCategoryId] = React.useState("");
   const [paymentType, setPaymentType] = React.useState<"avista" | "parcelado">("avista");
   const [installments, setInstallments] = React.useState("2");
-  const [isShared, setIsShared] = React.useState(false);
-  const [ownAmount, setOwnAmount] = React.useState("");
+
+  const [prepaymentModalOpen, setPrepaymentModalOpen] = React.useState(false);
+  const [prepaymentAmount, setPrepaymentAmount] = React.useState("");
+  const [prepaymentDate, setPrepaymentDate] = React.useState(toISODate(new Date()));
+  const [prepaymentDesc, setPrepaymentDesc] = React.useState("Antecipação de fatura");
 
   const [subscriptionModalOpen, setSubscriptionModalOpen] = React.useState(false);
   const [editingSubscription, setEditingSubscription] = React.useState<CardSubscription | null>(null);
@@ -138,7 +149,8 @@ function CardDetailModalContent({
   const [subscriptionDate, setSubscriptionDate] = React.useState(toISODate(new Date()));
   const [subscriptionCategoryId, setSubscriptionCategoryId] = React.useState("");
   const [subscriptionActive, setSubscriptionActive] = React.useState(true);
-  const nestedModalOpen = purchaseModalOpen || subscriptionModalOpen;
+  const nestedModalOpen =
+    purchaseModalOpen || subscriptionModalOpen || prepaymentModalOpen;
 
   const expenseCategories = React.useMemo(
     () => categories.filter((category) => category.kind === "expense" || category.kind === "both"),
@@ -160,8 +172,12 @@ function CardDetailModalContent({
     setCategoryId("");
     setPaymentType("avista");
     setInstallments("2");
-    setIsShared(false);
-    setOwnAmount("");
+  }, []);
+
+  const resetPrepaymentForm = React.useCallback(() => {
+    setPrepaymentAmount("");
+    setPrepaymentDate(toISODate(new Date()));
+    setPrepaymentDesc("Antecipação de fatura");
   }, []);
 
   const resetSubscriptionForm = React.useCallback(() => {
@@ -173,47 +189,74 @@ function CardDetailModalContent({
     setSubscriptionActive(true);
   }, [defaultSubscriptionCategoryId]);
 
+  const today = new Date();
+  const todayStr = toISODate(today);
   const invoiceStatus = cardInvoiceStatusByDate(transactions, card.id);
-  const { total: openTotal, ownTotal: openOwnTotal } = cardOpenTotals(
+  const { total: openTotal } = cardOpenTotals(
     purchases,
     card,
-    new Date(),
-    invoiceStatus
+    today,
+    invoiceStatus,
+    prepayments
   );
   const nextPayment = cardNextPayment(
     purchases,
     card,
     subscriptions,
-    new Date(),
-    invoiceStatus
+    today,
+    invoiceStatus,
+    prepayments
   );
+  /** Fatura em foco na UI (ainda mostra a quitada por antecipação até ser marcada paga). */
+  const focusInvoice =
+    aggregateByDueDate(purchases, card, subscriptions, prepayments).find(
+      (payment) => {
+        if (invoiceStatus.get(invoiceDateKey(payment.dueDate)) === "concluido") {
+          return false;
+        }
+        if (payment.grossTotal <= 0.005) return false;
+        if (payment.dueDate < todayStr) {
+          const status = invoiceStatus.get(invoiceDateKey(payment.dueDate));
+          return (
+            status === "pendente" ||
+            status === "atrasado" ||
+            payment.prepaidTotal > 0.005
+          );
+        }
+        return true;
+      }
+    ) ?? nextPayment;
   const creditLimit = card.credit_limit ?? null;
   const availableLimit = cardAvailableLimit(creditLimit, openTotal);
-  const showOwnTotals = sharedPurchasesEnabled && openOwnTotal < openTotal - 0.005;
+  const focusPrepayments = focusInvoice
+    ? prepayments.filter(
+        (item) =>
+          invoiceDateKey(item.invoice_due_date) ===
+          invoiceDateKey(focusInvoice.dueDate)
+      )
+    : [];
+  const remainingToPrepay = nextPayment?.total ?? 0;
+  const canPrepay = Boolean(nextPayment && nextPayment.grossTotal > 0.005);
+  const showPrepaySection = Boolean(focusInvoice);
 
-  const purchaseTotalParsed = parseAmount(purchaseAmount);
-  const ownAmountParsed = parseAmount(ownAmount);
-  const sharedActive = sharedPurchasesEnabled && isShared;
-  const ownAmountError =
-    sharedActive && ownAmount.trim() !== ""
-      ? !Number.isFinite(ownAmountParsed) || ownAmountParsed <= 0
+  const prepaymentAmountParsed = parseAmount(prepaymentAmount);
+  const prepaymentAmountError =
+    prepaymentAmount.trim() !== ""
+      ? !Number.isFinite(prepaymentAmountParsed) || prepaymentAmountParsed <= 0
         ? "Informe um valor maior que zero."
-        : Number.isFinite(purchaseTotalParsed) && ownAmountParsed > purchaseTotalParsed
-          ? "Sua parte não pode ser maior que o valor total."
+        : prepaymentAmountParsed > remainingToPrepay + 0.005
+          ? `Máximo: ${formatCurrency(remainingToPrepay)} (saldo da fatura).`
           : null
-      : null;
-  const otherPersonShare =
-    sharedActive &&
-    !ownAmountError &&
-    Number.isFinite(purchaseTotalParsed) &&
-    Number.isFinite(ownAmountParsed) &&
-    ownAmountParsed > 0
-      ? Math.round((purchaseTotalParsed - ownAmountParsed) * 100) / 100
       : null;
 
   function openNewPurchase() {
     resetPurchaseForm();
     setPurchaseModalOpen(true);
+  }
+
+  function openNewPrepayment() {
+    resetPrepaymentForm();
+    setPrepaymentModalOpen(true);
   }
 
   function openNewSubscription() {
@@ -239,10 +282,6 @@ function CardDetailModalContent({
     setCategoryId(purchase.category_id ?? "");
     setPaymentType(purchase.installments > 1 ? "parcelado" : "avista");
     setInstallments(String(purchase.installments > 1 ? purchase.installments : 2));
-    setIsShared(purchase.is_shared);
-    setOwnAmount(
-      purchase.own_amount != null ? String(purchase.own_amount).replace(".", ",") : ""
-    );
     setPurchaseModalOpen(true);
   }
 
@@ -285,11 +324,6 @@ function CardDetailModalContent({
     ) {
       return;
     }
-    if (sharedActive) {
-      if (ownAmountError) return;
-      if (!Number.isFinite(ownAmountParsed) || ownAmountParsed <= 0) return;
-      if (ownAmountParsed > parsed) return;
-    }
 
     setSaving(true);
     try {
@@ -300,10 +334,29 @@ function CardDetailModalContent({
         installments: installmentCount,
         purchase_date: purchaseDate,
         category_id: categoryId || null,
-        is_shared: sharedActive,
-        own_amount: sharedActive ? ownAmountParsed : null,
       });
       setPurchaseModalOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSavePrepayment(event: React.FormEvent) {
+    event.preventDefault();
+    if (!nextPayment) return;
+    if (prepaymentAmountError) return;
+    if (!Number.isFinite(prepaymentAmountParsed) || prepaymentAmountParsed <= 0) return;
+    if (prepaymentAmountParsed > remainingToPrepay + 0.005) return;
+
+    setSaving(true);
+    try {
+      await onSavePrepayment({
+        invoice_due_date: nextPayment.dueDate,
+        amount: prepaymentAmountParsed,
+        payment_date: prepaymentDate,
+        description: prepaymentDesc.trim() || "Antecipação de fatura",
+      });
+      setPrepaymentModalOpen(false);
     } finally {
       setSaving(false);
     }
@@ -314,6 +367,16 @@ function CardDetailModalContent({
     setSaving(true);
     try {
       await onDeletePurchase(purchase.id);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeletePrepayment(prepayment: CardInvoicePrepayment) {
+    if (!confirm(`Excluir a antecipação de ${formatCurrency(prepayment.amount)}?`)) return;
+    setSaving(true);
+    try {
+      await onDeletePrepayment(prepayment.id);
     } finally {
       setSaving(false);
     }
@@ -395,6 +458,7 @@ function CardDetailModalContent({
                 openTotal,
                 nextPaymentTotal: nextPayment?.total ?? 0,
                 nextPaymentDate: nextPayment?.dueDate ?? null,
+                nextPaymentPrepaid: nextPayment?.prepaidTotal ?? 0,
                 purchaseCount: purchases.length,
                 gradientIndex,
               }}
@@ -406,9 +470,7 @@ function CardDetailModalContent({
               <CalendarClock size={19} aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-muted">
-                {showOwnTotals ? "Em aberto no cartão" : "Em aberto"}
-              </p>
+              <p className="text-xs font-medium text-muted">Em aberto</p>
               <p className="mt-0.5 truncate text-sm font-semibold tabular-nums sm:text-base">
                 {formatCurrency(openTotal)}
                 {nextPayment ? (
@@ -418,11 +480,6 @@ function CardDetailModalContent({
                   </span>
                 ) : null}
               </p>
-              {showOwnTotals ? (
-                <p className="mt-0.5 truncate text-xs font-medium text-primary tabular-nums">
-                  Sua parte {formatCurrency(openOwnTotal)}
-                </p>
-              ) : null}
               {creditLimit != null ? (
                 <p className="mt-1 text-xs text-muted">
                   Limite {formatCurrency(creditLimit)}
@@ -435,7 +492,12 @@ function CardDetailModalContent({
           </div>
 
           {!editingSettings ? (
-            <div className="grid grid-cols-2 gap-2.5">
+            <div
+              className={cn(
+                "grid gap-2.5",
+                canPrepay ? "grid-cols-3" : "grid-cols-2"
+              )}
+            >
               <Button
                 variant="outline"
                 className="min-h-11 px-2 sm:px-4"
@@ -448,6 +510,17 @@ function CardDetailModalContent({
                 <ShoppingBag size={16} aria-hidden="true" />
                 <span className="truncate">Nova compra</span>
               </Button>
+              {canPrepay ? (
+                <Button
+                  variant="outline"
+                  className="min-h-11 px-2 sm:px-4"
+                  onClick={openNewPrepayment}
+                  disabled={remainingToPrepay <= 0.005}
+                >
+                  <Banknote size={16} aria-hidden="true" />
+                  <span className="truncate">Antecipar</span>
+                </Button>
+              ) : null}
             </div>
           ) : (
             <form
@@ -554,6 +627,89 @@ function CardDetailModalContent({
             </form>
           )}
 
+          {showPrepaySection ? (
+            <section aria-labelledby="card-prepayments-title">
+              <div className="mb-2.5 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h3 id="card-prepayments-title" className="text-sm font-semibold">
+                    Antecipações
+                  </h3>
+                  <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-muted">
+                    {focusPrepayments.length}
+                  </span>
+                </div>
+                {remainingToPrepay > 0.005 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 shrink-0 px-2 text-primary hover:bg-primary/10 hover:text-primary"
+                    onClick={openNewPrepayment}
+                  >
+                    <Plus size={15} aria-hidden="true" />
+                    Antecipar
+                  </Button>
+                ) : null}
+              </div>
+
+              {focusInvoice ? (
+                <p className="mb-2.5 text-xs leading-relaxed text-muted">
+                  Fatura de {formatDateBR(focusInvoice.dueDate)}:{" "}
+                  {formatCurrency(focusInvoice.grossTotal)}
+                  {focusInvoice.prepaidTotal > 0.005 ? (
+                    <>
+                      {" "}
+                      · já antecipado {formatCurrency(focusInvoice.prepaidTotal)}
+                    </>
+                  ) : null}{" "}
+                  · a pagar {formatCurrency(focusInvoice.total)}
+                </p>
+              ) : null}
+
+              {focusPrepayments.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border px-5 py-6 text-center">
+                  <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-surface text-muted">
+                    <Banknote size={20} aria-hidden="true" />
+                  </span>
+                  <p className="mt-3 text-sm font-medium">Nenhuma antecipação nesta fatura</p>
+                  <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-muted">
+                    Antecipe parte ou o total da próxima fatura para reduzir o valor a pagar.
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
+                  {focusPrepayments.map((prepayment) => (
+                    <li key={prepayment.id} className="p-3.5 sm:p-4">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">
+                            {prepayment.description || "Antecipação de fatura"}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            Pago em {formatDateBR(prepayment.payment_date)}
+                          </p>
+                          <p className="mt-1.5 text-sm font-semibold tabular-nums text-income">
+                            {formatCurrency(prepayment.amount)}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11 text-expense hover:bg-expense-bg hover:text-expense"
+                          onClick={() => void handleDeletePrepayment(prepayment)}
+                          disabled={saving}
+                          aria-label={`Excluir antecipação de ${formatCurrency(prepayment.amount)}`}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+
           <section aria-labelledby="card-purchases-title">
             <div className="mb-2.5 flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -599,22 +755,12 @@ function CardDetailModalContent({
                     purchase.installments > 1
                       ? splitInstallments(purchase.total_amount, purchase.installments)[0]
                       : purchase.total_amount;
-                  const own = purchaseOwnAmount(purchase);
-                  const shared = sharedPurchasesEnabled && purchase.is_shared;
 
                   return (
                     <li key={purchase.id} className="p-3.5 sm:p-4">
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-semibold">{purchase.description}</p>
-                            {shared && (
-                              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                                <Users size={11} aria-hidden="true" />
-                                Dividida
-                              </span>
-                            )}
-                          </div>
+                          <p className="truncate text-sm font-semibold">{purchase.description}</p>
                           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
                             <span>{formatDateBR(purchase.purchase_date)}</span>
                             <span aria-hidden="true">·</span>
@@ -639,11 +785,6 @@ function CardDetailModalContent({
                           </p>
                           <p className="mt-1.5 text-sm font-semibold text-expense">
                             {formatCurrency(purchase.total_amount)}
-                            {shared && (
-                              <span className="ml-1.5 text-xs font-medium text-primary">
-                                · sua parte {formatCurrency(own)}
-                              </span>
-                            )}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center">
@@ -856,9 +997,7 @@ function CardDetailModalContent({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="min-w-0">
-              <Label htmlFor="p-amount">
-                {sharedActive ? "Valor total da compra (R$)" : "Valor total (R$)"}
-              </Label>
+              <Label htmlFor="p-amount">Valor total (R$)</Label>
               <Input
                 id="p-amount"
                 className="h-11"
@@ -882,47 +1021,6 @@ function CardDetailModalContent({
               />
             </div>
           </div>
-          {sharedPurchasesEnabled && (
-            <ToggleField
-              checked={isShared}
-              onCheckedChange={(checked) => {
-                setIsShared(checked);
-                if (!checked) setOwnAmount("");
-              }}
-              icon={Users}
-              title="Compra dividida"
-              description="O cartão recebe o valor cheio, mas você paga só a sua parte."
-              ariaLabel="Marcar compra como dividida"
-            >
-              <div className="border-t border-primary/20 p-3">
-                <Label htmlFor="p-own-amount">Valor que irei pagar (R$)</Label>
-                <Input
-                  id="p-own-amount"
-                  className="h-11"
-                  inputMode="decimal"
-                  value={ownAmount}
-                  onChange={(event) => setOwnAmount(event.target.value)}
-                  placeholder="0,00"
-                  disabled={saving}
-                  aria-invalid={ownAmountError ? true : undefined}
-                  aria-describedby="p-own-amount-hint"
-                  required={sharedActive}
-                />
-                <p
-                  id="p-own-amount-hint"
-                  className={cn(
-                    "mt-1.5 text-xs",
-                    ownAmountError ? "text-expense" : "text-muted"
-                  )}
-                >
-                  {ownAmountError ??
-                    (otherPersonShare !== null
-                      ? `Parte da outra pessoa: ${formatCurrency(otherPersonShare)}`
-                      : "Quanto dessa compra sai do seu bolso.")}
-                </p>
-              </div>
-            </ToggleField>
-          )}
           <fieldset disabled={saving}>
             <legend className="text-sm font-medium text-foreground/85">Pagamento</legend>
             <div className="mt-2 grid grid-cols-2 gap-2.5">
@@ -975,6 +1073,91 @@ function CardDetailModalContent({
             </Button>
             <Button type="submit" className="min-h-11" disabled={saving}>
               {saving ? "Salvando..." : editingPurchase ? "Salvar compra" : "Adicionar"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={open && prepaymentModalOpen}
+        onClose={() => setPrepaymentModalOpen(false)}
+        title="Antecipar fatura"
+        className="max-w-xl"
+        contentClassName="px-4 pt-4 sm:px-6 sm:pt-6"
+      >
+        <form onSubmit={handleSavePrepayment} className="w-full min-w-0 max-w-full space-y-4">
+          {nextPayment ? (
+            <p className="text-xs leading-relaxed text-muted">
+              Fatura de {formatDateBR(nextPayment.dueDate)}:{" "}
+              {formatCurrency(nextPayment.grossTotal)} · já antecipado{" "}
+              {formatCurrency(nextPayment.prepaidTotal)} · a pagar{" "}
+              {formatCurrency(nextPayment.total)}
+            </p>
+          ) : null}
+          <div>
+            <Label htmlFor="pp-amount">Valor (R$)</Label>
+            <Input
+              id="pp-amount"
+              className="h-11"
+              inputMode="decimal"
+              value={prepaymentAmount}
+              onChange={(event) => setPrepaymentAmount(event.target.value)}
+              placeholder="0,00"
+              disabled={saving}
+              data-autofocus
+              aria-invalid={prepaymentAmountError ? true : undefined}
+              aria-describedby="pp-amount-hint"
+              required
+            />
+            <p
+              id="pp-amount-hint"
+              className={cn(
+                "mt-1.5 text-xs",
+                prepaymentAmountError ? "text-expense" : "text-muted"
+              )}
+            >
+              {prepaymentAmountError ??
+                `Máximo disponível nesta fatura: ${formatCurrency(remainingToPrepay)}`}
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="pp-date">Data do pagamento</Label>
+            <DateInput
+              id="pp-date"
+              className="h-11"
+              value={prepaymentDate}
+              onChange={(event) => setPrepaymentDate(event.target.value)}
+              disabled={saving}
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="pp-desc">Descrição</Label>
+            <Input
+              id="pp-desc"
+              className="h-11"
+              value={prepaymentDesc}
+              onChange={(event) => setPrepaymentDesc(event.target.value)}
+              placeholder="Antecipação de fatura"
+              disabled={saving}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              onClick={() => setPrepaymentModalOpen(false)}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              className="min-h-11"
+              disabled={saving || Boolean(prepaymentAmountError)}
+            >
+              {saving ? "Salvando..." : "Antecipar"}
             </Button>
           </div>
         </form>

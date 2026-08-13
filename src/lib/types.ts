@@ -82,14 +82,10 @@ export interface CardPurchase {
   user_id: string;
   credit_card_id: string;
   description: string;
-  /** Valor cheio lançado na fatura do cartão. */
   total_amount: number;
   installments: number;
   purchase_date: string;
   category_id: string | null;
-  is_shared: boolean;
-  /** Parte que o dono do cartão paga. Null quando a compra não é dividida. */
-  own_amount: number | null;
   created_at: string;
 }
 
@@ -109,8 +105,26 @@ export interface CardPurchaseInput {
   installments: number;
   purchase_date: string;
   category_id: string | null;
-  is_shared: boolean;
-  own_amount: number | null;
+}
+
+export interface CardInvoicePrepayment {
+  id: string;
+  user_id: string;
+  credit_card_id: string;
+  /** Vencimento da fatura que a antecipação abate. */
+  invoice_due_date: string;
+  amount: number;
+  payment_date: string;
+  description: string;
+  created_at: string;
+}
+
+export interface CardInvoicePrepaymentInput {
+  credit_card_id: string;
+  invoice_due_date: string;
+  amount: number;
+  payment_date: string;
+  description: string;
 }
 
 export interface CardSubscription {
@@ -142,7 +156,6 @@ export interface Settings {
   user_id: string;
   daily_target: number;
   cycle_days: number;
-  shared_purchases_enabled: boolean;
 }
 
 export interface TransactionInput {

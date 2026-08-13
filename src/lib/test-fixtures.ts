@@ -1,4 +1,5 @@
 import type {
+  CardInvoicePrepayment,
   CardPurchase,
   CardSubscription,
   Category,
@@ -33,9 +34,23 @@ export function makePurchase(
     installments: 1,
     purchase_date: "2026-07-15",
     category_id: null,
-    is_shared: false,
-    own_amount: null,
     created_at: "2026-07-15T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makePrepayment(
+  overrides: Partial<CardInvoicePrepayment> = {}
+): CardInvoicePrepayment {
+  return {
+    id: "prepay-1",
+    user_id: "user-1",
+    credit_card_id: "card-1",
+    invoice_due_date: "2026-09-10",
+    amount: 40,
+    payment_date: "2026-08-20",
+    description: "Antecipação de fatura",
+    created_at: "2026-08-20T00:00:00Z",
     ...overrides,
   };
 }

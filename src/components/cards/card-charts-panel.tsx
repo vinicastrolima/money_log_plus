@@ -19,12 +19,19 @@ import {
 import { InvoiceLinesModal } from "@/components/cards/invoice-lines-modal";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { Card } from "@/components/ui/card";
-import type { CardPurchase, CardSubscription, Category, CreditCard } from "@/lib/types";
+import type {
+  CardInvoicePrepayment,
+  CardPurchase,
+  CardSubscription,
+  Category,
+  CreditCard,
+} from "@/lib/types";
 import {
   ALL_CARDS_CHART_COLOR,
   cardChartColor,
   cardPaymentStatsInMonth,
   installmentLinesForList,
+  invoiceDateKey,
   type InvoiceListFilter,
   paymentsByMonthRange,
   spendingByCategoryInMonth,
@@ -35,6 +42,7 @@ interface Props {
   creditCards: CreditCard[];
   cardPurchases: CardPurchase[];
   cardSubscriptions: CardSubscription[];
+  cardPrepayments?: CardInvoicePrepayment[];
   categories: Category[];
   /** null = todos os cartões */
   filterCardId: string | null;
@@ -43,7 +51,6 @@ interface Props {
   month0: number;
   onMonthChange: (year: number, month0: number) => void;
   onOpenCard?: (cardId: string) => void;
-  sharedPurchasesEnabled?: boolean;
 }
 
 type MetricListKind = "month" | "range" | "category";
@@ -160,6 +167,7 @@ export function CardChartsPanel({
   creditCards,
   cardPurchases,
   cardSubscriptions,
+  cardPrepayments = [],
   categories,
   filterCardId,
   filterLabel,
@@ -167,7 +175,6 @@ export function CardChartsPanel({
   month0,
   onMonthChange,
   onOpenCard,
-  sharedPurchasesEnabled = false,
 }: Props) {
   const [listKind, setListKind] = React.useState<MetricListKind | null>(null);
 
@@ -194,9 +201,18 @@ export function CardChartsPanel({
         month0,
         6,
         filterCardId,
-        cardSubscriptions
+        cardSubscriptions,
+        cardPrepayments
       ),
-    [cardPurchases, cardSubscriptions, creditCards, year, month0, filterCardId]
+    [
+      cardPurchases,
+      cardSubscriptions,
+      cardPrepayments,
+      creditCards,
+      year,
+      month0,
+      filterCardId,
+    ]
   );
 
   const monthStats = React.useMemo(
@@ -207,9 +223,18 @@ export function CardChartsPanel({
         year,
         month0,
         filterCardId,
-        cardSubscriptions
+        cardSubscriptions,
+        cardPrepayments
       ),
-    [cardPurchases, cardSubscriptions, creditCards, year, month0, filterCardId]
+    [
+      cardPurchases,
+      cardSubscriptions,
+      cardPrepayments,
+      creditCards,
+      year,
+      month0,
+      filterCardId,
+    ]
   );
 
   const series = React.useMemo(
@@ -237,14 +262,11 @@ export function CardChartsPanel({
 
   const totalCategory = byCategory.reduce((sum, item) => sum + item.total, 0);
   const totalMonthly = monthly.reduce((sum, item) => sum + item.total, 0);
-  const ownTotalMonthly = monthly.reduce((sum, item) => sum + item.ownTotal, 0);
+  const prepaidMonthly = monthly.reduce((sum, item) => sum + item.prepaidTotal, 0);
   const monthlyAverage = monthly.length > 0 ? totalMonthly / monthly.length : 0;
 
-  /** Só destaca a segunda linha quando alguma compra dividida altera o valor. */
-  const ownHighlight = (total: number, own: number) =>
-    sharedPurchasesEnabled && own < total - 0.005
-      ? `Sua parte ${formatCurrency(own)}`
-      : undefined;
+  const prepaidHighlight = (prepaid: number) =>
+    prepaid > 0.005 ? `Antecipado ${formatCurrency(prepaid)}` : undefined;
   const topCategory = byCategory[0] ?? null;
   const showStacked = !filterCardId && creditCards.length > 1;
 
@@ -290,6 +312,23 @@ export function CardChartsPanel({
       listFilter
     );
   }, [listFilter, cardPurchases, creditCards, cardSubscriptions, filterCardId]);
+
+  const listPrepayments = React.useMemo(() => {
+    if (!listFilter || listFilter.kind === "category") return [];
+    return cardPrepayments.filter((prepayment) => {
+      if (filterCardId && prepayment.credit_card_id !== filterCardId) return false;
+      const due = new Date(`${invoiceDateKey(prepayment.invoice_due_date)}T12:00:00`);
+      const dueYear = due.getFullYear();
+      const dueMonth = due.getMonth();
+      if (listFilter.kind === "month") {
+        return dueYear === listFilter.year && dueMonth === listFilter.month0;
+      }
+      const start = listFilter.year * 12 + listFilter.month0;
+      const end = start + listFilter.monthCount - 1;
+      const point = dueYear * 12 + dueMonth;
+      return point >= start && point <= end;
+    });
+  }, [listFilter, cardPrepayments, filterCardId]);
 
   const listMeta = React.useMemo(() => {
     if (listKind === "month") {
@@ -339,7 +378,7 @@ export function CardChartsPanel({
           detail={selectedMonthLabel}
           icon={ReceiptText}
           onClick={() => setListKind("month")}
-          highlight={ownHighlight(monthStats.total, monthStats.ownTotal)}
+          highlight={prepaidHighlight(monthStats.prepaidTotal)}
         />
         <Metric
           label="Compras na fatura"
@@ -349,13 +388,6 @@ export function CardChartsPanel({
           } no período`}
           icon={ShoppingBag}
           onClick={() => setListKind("month")}
-          highlight={
-            sharedPurchasesEnabled && monthStats.sharedCount > 0
-              ? `${monthStats.sharedCount} dividida${
-                  monthStats.sharedCount === 1 ? "" : "s"
-                }`
-              : undefined
-          }
         />
         <Metric
           label="Próximos 6 meses"
@@ -363,7 +395,7 @@ export function CardChartsPanel({
           detail={`Média de ${formatCurrency(monthlyAverage)}`}
           icon={CalendarRange}
           onClick={() => setListKind("range")}
-          highlight={ownHighlight(totalMonthly, ownTotalMonthly)}
+          highlight={prepaidHighlight(prepaidMonthly)}
         />
         <Metric
           label="Maior categoria"
@@ -383,7 +415,7 @@ export function CardChartsPanel({
         lines={listLines}
         categories={categories}
         showCardName={!filterCardId}
-        showOwnAmounts={sharedPurchasesEnabled}
+        prepayments={listPrepayments}
         onOpenCard={
           onOpenCard
             ? (cardId) => {

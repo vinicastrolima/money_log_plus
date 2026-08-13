@@ -58,8 +58,6 @@ type CardPurchaseRow = {
   total_amount: number | string;
   installments: number;
   category_id: string | null;
-  is_shared: boolean | null;
-  own_amount: number | string | null;
   created_at: string;
 };
 
@@ -386,7 +384,7 @@ export async function buildFinancialSnapshot(
     supabase
       .from("card_purchases")
       .select(
-        "id,user_id,credit_card_id,purchase_date,total_amount,installments,category_id,is_shared,own_amount,created_at"
+        "id,user_id,credit_card_id,purchase_date,total_amount,installments,category_id,created_at"
       )
       .eq("user_id", userId),
     supabase
@@ -529,11 +527,7 @@ export async function buildFinancialSnapshot(
   for (const purchase of purchases) {
     const month = monthKey(purchase.purchase_date);
     if (!cashFlowMap.has(month)) continue;
-    // Em compras divididas só a parte do usuário conta como gasto dele.
-    const value =
-      purchase.is_shared && purchase.own_amount != null
-        ? amount(purchase.own_amount)
-        : amount(purchase.total_amount);
+    const value = amount(purchase.total_amount);
     const bucket = getCategoryBucket(month, purchase.category_id);
     bucket.cardPurchases += value;
     largestExpenses.push({
@@ -724,9 +718,6 @@ export async function buildFinancialSnapshot(
     installments: purchase.installments,
     purchase_date: purchase.purchase_date,
     category_id: purchase.category_id,
-    is_shared: Boolean(purchase.is_shared),
-    own_amount:
-      purchase.own_amount == null ? null : amount(purchase.own_amount),
     created_at: purchase.created_at,
   }));
   const typedSubscriptions: CardSubscription[] = subscriptions.map(

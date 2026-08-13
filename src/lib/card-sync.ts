@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aggregateByDueDate } from "./cards";
-import type { CardPurchase, CardSubscription, CreditCard, TxStatus } from "./types";
+import type {
+  CardInvoicePrepayment,
+  CardPurchase,
+  CardSubscription,
+  CreditCard,
+  TxStatus,
+} from "./types";
 import { toISODate } from "./utils";
 
 export async function syncCreditCardTransactions(
@@ -9,7 +15,8 @@ export async function syncCreditCardTransactions(
   purchases: CardPurchase[],
   subscriptions: CardSubscription[],
   cartaoCategoryId: string,
-  userId: string
+  userId: string,
+  prepayments: CardInvoicePrepayment[] = []
 ) {
   const today = toISODate(new Date());
 
@@ -35,8 +42,8 @@ export async function syncCreditCardTransactions(
     .eq("user_id", userId)
     .gte("date", today);
 
-  const aggs = aggregateByDueDate(purchases, card, subscriptions).filter(
-    (agg) => agg.dueDate >= today
+  const aggs = aggregateByDueDate(purchases, card, subscriptions, prepayments).filter(
+    (agg) => agg.dueDate >= today && agg.total > 0
   );
   if (aggs.length === 0) return;
 

@@ -10,6 +10,8 @@ import {
   nextDate,
 } from "@/lib/recurrence";
 import type {
+  CardInvoicePrepayment,
+  CardInvoicePrepaymentInput,
   CardPurchase,
   CardPurchaseInput,
   CardSubscription,
@@ -32,6 +34,7 @@ interface DataContextValue {
   creditCards: CreditCard[];
   cardPurchases: CardPurchase[];
   cardSubscriptions: CardSubscription[];
+  cardPrepayments: CardInvoicePrepayment[];
   settings: Settings | null;
   categoryById: (id: string | null) => Category | null;
   recurrenceById: (id: string | null) => RecurrenceRule | null;
@@ -55,6 +58,9 @@ interface DataContextValue {
   addCardSubscription: (input: CardSubscriptionInput) => Promise<void>;
   updateCardSubscription: (id: string, input: CardSubscriptionInput) => Promise<void>;
   deleteCardSubscription: (id: string) => Promise<void>;
+  addCardPrepayment: (input: CardInvoicePrepaymentInput) => Promise<void>;
+  updateCardPrepayment: (id: string, input: CardInvoicePrepaymentInput) => Promise<void>;
+  deleteCardPrepayment: (id: string) => Promise<void>;
 }
 
 interface MaterializeOptions {
@@ -86,6 +92,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [creditCards, setCreditCards] = React.useState<CreditCard[]>([]);
   const [cardPurchases, setCardPurchases] = React.useState<CardPurchase[]>([]);
   const [cardSubscriptions, setCardSubscriptions] = React.useState<CardSubscription[]>([]);
+  const [cardPrepayments, setCardPrepayments] = React.useState<CardInvoicePrepayment[]>([]);
   const [settings, setSettings] = React.useState<Settings | null>(null);
 
   const materializeRule = React.useCallback(
@@ -139,13 +146,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const load = React.useCallback(async () => {
-    const [catRes, ruleRes, cardRes, purchaseRes, subRes, setRes, userRes] =
-      await Promise.all([
+    const [
+      catRes,
+      ruleRes,
+      cardRes,
+      purchaseRes,
+      subRes,
+      prepayRes,
+      setRes,
+      userRes,
+    ] = await Promise.all([
         supabase.from("categories").select("*").order("name"),
         supabase.from("recurrence_rules").select("*").order("created_at"),
         supabase.from("credit_cards").select("*").order("name"),
         supabase.from("card_purchases").select("*").order("purchase_date", { ascending: false }),
         supabase.from("card_subscriptions").select("*").order("description"),
+        supabase
+          .from("card_invoice_prepayments")
+          .select("*")
+          .order("payment_date", { ascending: false }),
         supabase.from("settings").select("*").maybeSingle(),
         supabase.auth.getUser(),
       ]);
@@ -176,6 +195,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setCreditCards((cardRes.data as CreditCard[]) ?? []);
     setCardPurchases((purchaseRes.data as CardPurchase[]) ?? []);
     setCardSubscriptions((subRes.data as CardSubscription[]) ?? []);
+    setCardPrepayments((prepayRes.data as CardInvoicePrepayment[]) ?? []);
 
     let s = setRes.data as Settings | null;
     if (!s && userRes.data.user) {
@@ -216,7 +236,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       userId: string,
       purchasesSnapshot?: CardPurchase[],
       cardSnapshot?: CreditCard,
-      subscriptionsSnapshot?: CardSubscription[]
+      subscriptionsSnapshot?: CardSubscription[],
+      prepaymentsSnapshot?: CardInvoicePrepayment[]
     ) => {
       const card = cardSnapshot ?? creditCards.find((c) => c.id === cardId);
       const catId = getCartaoCategoryId();
@@ -227,16 +248,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const subscriptions =
         subscriptionsSnapshot?.filter((s) => s.credit_card_id === cardId) ??
         cardSubscriptions.filter((s) => s.credit_card_id === cardId);
+      const prepayments =
+        prepaymentsSnapshot?.filter((p) => p.credit_card_id === cardId) ??
+        cardPrepayments.filter((p) => p.credit_card_id === cardId);
       await syncCreditCardTransactions(
         supabase,
         card,
         purchases,
         subscriptions,
         catId,
-        userId
+        userId,
+        prepayments
       );
     },
-    [supabase, creditCards, cardPurchases, cardSubscriptions, getCartaoCategoryId]
+    [
+      supabase,
+      creditCards,
+      cardPurchases,
+      cardSubscriptions,
+      cardPrepayments,
+      getCartaoCategoryId,
+    ]
   );
 
   const addTransaction = React.useCallback(
@@ -657,6 +689,84 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [supabase, getUserId, load, cardSubscriptions, resyncCard]
   );
 
+  const addCardPrepayment = React.useCallback(
+    async (input: CardInvoicePrepaymentInput) => {
+      const userId = await getUserId();
+      if (!userId) return;
+      const { data, error } = await supabase
+        .from("card_invoice_prepayments")
+        .insert({ ...input, user_id: userId })
+        .select()
+        .single();
+      if (error) throw error;
+      const nextPrepayments = [data as CardInvoicePrepayment, ...cardPrepayments];
+      setCardPrepayments(nextPrepayments);
+      await resyncCard(
+        input.credit_card_id,
+        userId,
+        undefined,
+        undefined,
+        undefined,
+        nextPrepayments
+      );
+      await load();
+    },
+    [supabase, getUserId, load, cardPrepayments, resyncCard]
+  );
+
+  const updateCardPrepayment = React.useCallback(
+    async (id: string, input: CardInvoicePrepaymentInput) => {
+      const userId = await getUserId();
+      if (!userId) return;
+      const existing = cardPrepayments.find((p) => p.id === id);
+      const { data, error } = await supabase
+        .from("card_invoice_prepayments")
+        .update(input)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      const nextPrepayments = cardPrepayments.map((p) =>
+        p.id === id ? (data as CardInvoicePrepayment) : p
+      );
+      setCardPrepayments(nextPrepayments);
+      const cardIds = new Set(
+        [existing?.credit_card_id, input.credit_card_id].filter(Boolean) as string[]
+      );
+      for (const cardId of cardIds) {
+        await resyncCard(cardId, userId, undefined, undefined, undefined, nextPrepayments);
+      }
+      await load();
+    },
+    [supabase, getUserId, load, cardPrepayments, resyncCard]
+  );
+
+  const deleteCardPrepayment = React.useCallback(
+    async (id: string) => {
+      const userId = await getUserId();
+      if (!userId) return;
+      const existing = cardPrepayments.find((p) => p.id === id);
+      if (!existing) return;
+      const { error } = await supabase
+        .from("card_invoice_prepayments")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      const nextPrepayments = cardPrepayments.filter((p) => p.id !== id);
+      setCardPrepayments(nextPrepayments);
+      await resyncCard(
+        existing.credit_card_id,
+        userId,
+        undefined,
+        undefined,
+        undefined,
+        nextPrepayments
+      );
+      await load();
+    },
+    [supabase, getUserId, load, cardPrepayments, resyncCard]
+  );
+
   const categoryById = React.useCallback(
     (id: string | null) => categories.find((c) => c.id === id) ?? null,
     [categories]
@@ -675,6 +785,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     creditCards,
     cardPurchases,
     cardSubscriptions,
+    cardPrepayments,
     settings,
     categoryById,
     recurrenceById,
@@ -695,6 +806,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     addCardSubscription,
     updateCardSubscription,
     deleteCardSubscription,
+    addCardPrepayment,
+    updateCardPrepayment,
+    deleteCardPrepayment,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

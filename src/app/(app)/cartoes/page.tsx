@@ -31,9 +31,9 @@ export default function CartoesPage() {
     creditCards,
     cardPurchases,
     cardSubscriptions,
+    cardPrepayments,
     transactions,
     categories,
-    settings,
     addCreditCard,
     updateCreditCard,
     deleteCreditCard,
@@ -43,6 +43,8 @@ export default function CartoesPage() {
     addCardSubscription,
     updateCardSubscription,
     deleteCardSubscription,
+    addCardPrepayment,
+    deleteCardPrepayment,
   } = useData();
 
   const now = new Date();
@@ -65,28 +67,40 @@ export default function CartoesPage() {
       ? chartScope
       : "all";
 
-  const sharedPurchasesEnabled = settings?.shared_purchases_enabled ?? false;
-
   const walletCards = React.useMemo((): WalletCardData[] => {
     const today = new Date();
     return creditCards.map((card, i) => {
       const cardSubs = cardSubscriptions.filter((s) => s.credit_card_id === card.id);
       const cardPurch = cardPurchases.filter((p) => p.credit_card_id === card.id);
+      const cardPrepay = cardPrepayments.filter((p) => p.credit_card_id === card.id);
       const invoiceStatus = cardInvoiceStatusByDate(transactions, card.id);
-      const next = cardNextPayment(cardPurch, card, cardSubs, today, invoiceStatus);
-      const open = cardOpenTotals(cardPurch, card, today, invoiceStatus);
+      const next = cardNextPayment(
+        cardPurch,
+        card,
+        cardSubs,
+        today,
+        invoiceStatus,
+        cardPrepay
+      );
+      const open = cardOpenTotals(
+        cardPurch,
+        card,
+        today,
+        invoiceStatus,
+        cardPrepay
+      );
       return {
         card,
         openTotal: open.total,
-        openOwnTotal: sharedPurchasesEnabled ? open.ownTotal : undefined,
         nextPaymentTotal: next?.total ?? 0,
         nextPaymentDate: next?.dueDate ?? null,
+        nextPaymentPrepaid: next?.prepaidTotal ?? 0,
         availableLimit: cardAvailableLimit(card.credit_limit, open.total),
         purchaseCount: cardPurch.length,
         gradientIndex: i,
       };
     });
-  }, [creditCards, cardPurchases, cardSubscriptions, transactions, sharedPurchasesEnabled]);
+  }, [creditCards, cardPurchases, cardSubscriptions, cardPrepayments, transactions]);
 
   const filterCardId = effectiveChartScope === "all" ? null : effectiveChartScope;
   const filterLabel =
@@ -186,6 +200,7 @@ export default function CartoesPage() {
             creditCards={creditCards}
             cardPurchases={cardPurchases}
             cardSubscriptions={cardSubscriptions}
+            cardPrepayments={cardPrepayments}
             categories={categories}
             filterCardId={filterCardId}
             filterLabel={filterLabel}
@@ -196,7 +211,6 @@ export default function CartoesPage() {
               setMonth0(m);
             }}
             onOpenCard={openManage}
-            sharedPurchasesEnabled={sharedPurchasesEnabled}
           />
         </>
       )}
@@ -212,10 +226,10 @@ export default function CartoesPage() {
           gradientIndex={detailGradientIndex}
           purchases={cardPurchases.filter((p) => p.credit_card_id === detailCard.id)}
           subscriptions={cardSubscriptions.filter((s) => s.credit_card_id === detailCard.id)}
+          prepayments={cardPrepayments.filter((p) => p.credit_card_id === detailCard.id)}
           transactions={transactions}
           categories={categories}
           openPurchaseOnMount={openPurchaseOnDetail}
-          sharedPurchasesEnabled={sharedPurchasesEnabled}
           onSaveCard={async (input) => {
             await updateCreditCard(detailCard.id, input);
           }}
@@ -231,13 +245,21 @@ export default function CartoesPage() {
               installments: input.installments,
               purchase_date: input.purchase_date,
               category_id: input.category_id,
-              is_shared: input.is_shared,
-              own_amount: input.own_amount,
             };
             if (input.id) await updateCardPurchase(input.id, payload);
             else await addCardPurchase(payload);
           }}
           onDeletePurchase={deleteCardPurchase}
+          onSavePrepayment={async (input) => {
+            await addCardPrepayment({
+              credit_card_id: detailCard.id,
+              invoice_due_date: input.invoice_due_date,
+              amount: input.amount,
+              payment_date: input.payment_date,
+              description: input.description,
+            });
+          }}
+          onDeletePrepayment={deleteCardPrepayment}
           onSaveSubscription={async (input) => {
             const payload = {
               credit_card_id: detailCard.id,

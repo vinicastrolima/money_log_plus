@@ -19,14 +19,16 @@ import {
   installmentsForSubscription,
   invoiceDateKey,
   invoiceDueDateForPurchase,
+  invoiceNetTotal,
   paymentsByMonthRange,
-  purchaseOwnAmount,
+  prepaymentTotalForDueDate,
   spendingByCategoryInMonth,
   splitInstallments,
 } from "./cards";
 import {
   makeCard,
   makeCategory,
+  makePrepayment,
   makePurchase,
   makeSubscription,
   makeTransaction,
@@ -77,7 +79,7 @@ describe("invoiceDueDateForPurchase", () => {
   });
 });
 
-describe("splitInstallments / purchaseOwnAmount", () => {
+describe("splitInstallments / prepayments", () => {
   it("divide e joga centavos na última parcela", () => {
     expect(splitInstallments(100, 3)).toEqual([33.33, 33.33, 33.34]);
     expect(splitInstallments(100, 3).reduce((a, b) => a + b, 0)).toBeCloseTo(
@@ -86,23 +88,30 @@ describe("splitInstallments / purchaseOwnAmount", () => {
     );
   });
 
-  it("own amount respeita compra compartilhada", () => {
-    expect(purchaseOwnAmount(makePurchase({ is_shared: false }))).toBe(100);
-    expect(
-      purchaseOwnAmount(
-        makePurchase({ is_shared: true, own_amount: 40, total_amount: 100 })
-      )
-    ).toBe(40);
-    expect(
-      purchaseOwnAmount(
-        makePurchase({ is_shared: true, own_amount: null, total_amount: 100 })
-      )
-    ).toBe(100);
-    expect(
-      purchaseOwnAmount(
-        makePurchase({ is_shared: true, own_amount: 150, total_amount: 100 })
-      )
-    ).toBe(100);
+  it("invoiceNetTotal não fica negativo", () => {
+    expect(invoiceNetTotal(100, 40)).toBe(60);
+    expect(invoiceNetTotal(100, 150)).toBe(0);
+  });
+
+  it("prepaymentTotalForDueDate soma só o cartão/vencimento certo", () => {
+    const total = prepaymentTotalForDueDate(
+      [
+        makePrepayment({ amount: 40, invoice_due_date: "2026-09-10" }),
+        makePrepayment({
+          id: "p2",
+          amount: 10,
+          invoice_due_date: "2026-09-10",
+        }),
+        makePrepayment({
+          id: "p3",
+          amount: 99,
+          invoice_due_date: "2026-10-10",
+        }),
+      ],
+      "card-1",
+      "2026-09-10"
+    );
+    expect(total).toBe(50);
   });
 });
 
@@ -126,19 +135,24 @@ describe("installmentsForPurchaseWithCard", () => {
     expect(lines.map((l) => l.amount)).toEqual([100, 100, 100]);
   });
 
-  it("divide own_amount em compras compartilhadas", () => {
-    const lines = installmentsForPurchaseWithCard(
-      makePurchase({
-        total_amount: 200,
-        own_amount: 100,
-        is_shared: true,
-        installments: 2,
-        purchase_date: "2026-08-06",
-      }),
-      makeCard()
+  it("aggregateByDueDate abate antecipações do total líquido", () => {
+    const card = makeCard();
+    const aggs = aggregateByDueDate(
+      [
+        makePurchase({
+          purchase_date: "2026-08-06",
+          total_amount: 100,
+          installments: 1,
+        }),
+      ],
+      card,
+      [],
+      [makePrepayment({ invoice_due_date: "2026-09-10", amount: 40 })]
     );
-    expect(lines.map((l) => l.ownAmount)).toEqual([50, 50]);
-    expect(lines[0].isShared).toBe(true);
+    const sept = aggs.find((a) => a.dueDate === "2026-09-10");
+    expect(sept?.grossTotal).toBe(100);
+    expect(sept?.prepaidTotal).toBe(40);
+    expect(sept?.total).toBe(60);
   });
 });
 
@@ -337,6 +351,40 @@ describe("stats / charts helpers", () => {
     );
     expect(lines).toHaveLength(1);
     expect(lines[0].cardName).toBe("C6 Bank");
+  });
+});
+
+describe("antecipação de fatura", () => {
+  const card = makeCard();
+  const purchases = [
+    makePurchase({
+      purchase_date: "2026-08-06",
+      total_amount: 100,
+      installments: 1,
+    }),
+  ];
+  const today = new Date(2026, 7, 20);
+
+  it("reduz próxima fatura e em aberto", () => {
+    const prepayments = [
+      makePrepayment({ invoice_due_date: "2026-09-10", amount: 40 }),
+    ];
+    const next = cardNextPayment(purchases, card, [], today, undefined, prepayments);
+    const open = cardOpenTotals(purchases, card, today, undefined, prepayments);
+    expect(next?.grossTotal).toBe(100);
+    expect(next?.total).toBe(60);
+    expect(open.total).toBe(60);
+  });
+
+  it("fatura 100% antecipada deixa de ser a próxima", () => {
+    const prepayments = [
+      makePrepayment({ invoice_due_date: "2026-09-10", amount: 100 }),
+    ];
+    const next = cardNextPayment(purchases, card, [], today, undefined, prepayments);
+    expect(next).toBeNull();
+    expect(
+      cardOpenTotals(purchases, card, today, undefined, prepayments).total
+    ).toBe(0);
   });
 });
 

@@ -1,4 +1,5 @@
 import type {
+  CardInvoicePrepayment,
   CardPurchase,
   CardSubscription,
   Category,
@@ -50,17 +51,13 @@ function invoiceStatusOnDate(
 
 export interface InstallmentLine {
   dueDate: string;
-  /** Valor cheio que entra na fatura do cartão. */
   amount: number;
-  /** Parte do valor que o dono do cartão paga (igual a amount quando não é dividida). */
-  ownAmount: number;
   purchaseId: string;
   installmentNumber: number;
   installmentsTotal: number;
   purchaseDescription: string;
   categoryId?: string | null;
   isSubscription?: boolean;
-  isShared?: boolean;
 }
 
 /** Meses futuros gerados para assinaturas recorrentes. */
@@ -127,12 +124,25 @@ export function splitInstallments(total: number, count: number): number[] {
   return amounts;
 }
 
-/** Parte da compra que o dono do cartão paga de fato. */
-export function purchaseOwnAmount(purchase: CardPurchase): number {
-  if (!purchase.is_shared) return purchase.total_amount;
-  const own = purchase.own_amount;
-  if (own == null || !Number.isFinite(own)) return purchase.total_amount;
-  return Math.min(Math.max(own, 0), purchase.total_amount);
+/** Soma das antecipações de um cartão para um vencimento. */
+export function prepaymentTotalForDueDate(
+  prepayments: CardInvoicePrepayment[],
+  cardId: string,
+  dueDate: string
+): number {
+  const key = invoiceDateKey(dueDate);
+  let total = 0;
+  for (const prepayment of prepayments) {
+    if (prepayment.credit_card_id !== cardId) continue;
+    if (invoiceDateKey(prepayment.invoice_due_date) !== key) continue;
+    total += prepayment.amount;
+  }
+  return Math.round(total * 100) / 100;
+}
+
+/** Valor líquido da fatura após antecipações. */
+export function invoiceNetTotal(gross: number, prepaid: number): number {
+  return Math.max(0, Math.round((gross - prepaid) * 100) / 100);
 }
 
 /** Gera todas as parcelas de uma compra para um cartão. */
@@ -141,11 +151,6 @@ export function installmentsForPurchaseWithCard(
   card: CreditCard
 ): InstallmentLine[] {
   const amounts = splitInstallments(purchase.total_amount, purchase.installments);
-  const own = purchaseOwnAmount(purchase);
-  const ownAmounts =
-    own === purchase.total_amount
-      ? amounts
-      : splitInstallments(own, purchase.installments);
   const first = invoiceDueDateForPurchase(
     purchase.purchase_date,
     card.due_day,
@@ -161,14 +166,12 @@ export function installmentsForPurchaseWithCard(
     return {
       dueDate: toISODate(monthDate),
       amount,
-      ownAmount: ownAmounts[i],
       purchaseId: purchase.id,
       installmentNumber: i + 1,
       installmentsTotal: purchase.installments,
       purchaseDescription: purchase.description,
       categoryId: purchase.category_id,
       isSubscription: false,
-      isShared: purchase.is_shared,
     };
   });
 }
@@ -196,14 +199,12 @@ export function installmentsForSubscription(
     return {
       dueDate: toISODate(monthDate),
       amount: subscription.amount,
-      ownAmount: subscription.amount,
       purchaseId: subscription.id,
       installmentNumber: i + 1,
       installmentsTotal: 0,
       purchaseDescription: subscription.description,
       categoryId: subscription.category_id,
       isSubscription: true,
-      isShared: false,
     };
   });
 }
@@ -228,8 +229,9 @@ export function allInstallmentLines(
 export interface AggregatedCardPayment {
   dueDate: string;
   total: number;
-  /** Soma da parte própria das parcelas do dia. */
-  ownTotal: number;
+  /** Total bruto antes das antecipações (igual a total quando não há abatimento). */
+  grossTotal: number;
+  prepaidTotal: number;
   lines: InstallmentLine[];
 }
 
@@ -237,22 +239,39 @@ export interface AggregatedCardPayment {
 export function aggregateByDueDate(
   purchases: CardPurchase[],
   card: CreditCard,
-  subscriptions: CardSubscription[] = []
+  subscriptions: CardSubscription[] = [],
+  prepayments: CardInvoicePrepayment[] = []
 ): AggregatedCardPayment[] {
   const map = new Map<string, AggregatedCardPayment>();
   for (const line of allInstallmentLines(purchases, subscriptions, card)) {
     const cur = map.get(line.dueDate) ?? {
       dueDate: line.dueDate,
       total: 0,
-      ownTotal: 0,
+      grossTotal: 0,
+      prepaidTotal: 0,
       lines: [],
     };
-    cur.total += line.amount;
-    cur.ownTotal += line.ownAmount;
+    cur.grossTotal += line.amount;
     cur.lines.push(line);
     map.set(line.dueDate, cur);
   }
-  return Array.from(map.values()).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  return Array.from(map.values())
+    .map((agg) => {
+      const prepaidTotal = prepaymentTotalForDueDate(
+        prepayments,
+        card.id,
+        agg.dueDate
+      );
+      const grossTotal = Math.round(agg.grossTotal * 100) / 100;
+      return {
+        ...agg,
+        grossTotal,
+        prepaidTotal,
+        total: invoiceNetTotal(grossTotal, prepaidTotal),
+      };
+    })
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
 /**
@@ -265,11 +284,19 @@ export function cardOpenTotals(
   purchases: CardPurchase[],
   card: CreditCard,
   today: Date = new Date(),
-  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
-): { total: number; ownTotal: number } {
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>,
+  prepayments: CardInvoicePrepayment[] = []
+): { total: number } {
   const todayStr = toISODate(today);
-  let total = 0;
-  let ownTotal = 0;
+  const prepaidByDue = new Map<string, number>();
+  for (const prepayment of prepayments) {
+    if (prepayment.credit_card_id !== card.id) continue;
+    const key = invoiceDateKey(prepayment.invoice_due_date);
+    prepaidByDue.set(key, (prepaidByDue.get(key) ?? 0) + prepayment.amount);
+  }
+
+  // Em aberto por vencimento (só compras), depois abate antecipações daquele dia.
+  const openByDue = new Map<string, number>();
   for (const purchase of purchases) {
     if (purchase.credit_card_id !== card.id) continue;
     for (const line of installmentsForPurchaseWithCard(purchase, card)) {
@@ -280,13 +307,18 @@ export function cardOpenTotals(
         if (status !== "pendente" && status !== "atrasado") continue;
       }
 
-      total += line.amount;
-      ownTotal += line.ownAmount;
+      const key = invoiceDateKey(line.dueDate);
+      openByDue.set(key, (openByDue.get(key) ?? 0) + line.amount);
     }
+  }
+
+  let total = 0;
+  for (const [dueKey, gross] of openByDue) {
+    const prepaid = prepaidByDue.get(dueKey) ?? 0;
+    total += invoiceNetTotal(gross, prepaid);
   }
   return {
     total: Math.round(total * 100) / 100,
-    ownTotal: Math.round(ownTotal * 100) / 100,
   };
 }
 
@@ -295,9 +327,11 @@ export function cardOpenTotal(
   purchases: CardPurchase[],
   card: CreditCard,
   today: Date = new Date(),
-  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>,
+  prepayments: CardInvoicePrepayment[] = []
 ): number {
-  return cardOpenTotals(purchases, card, today, invoiceStatusByDate).total;
+  return cardOpenTotals(purchases, card, today, invoiceStatusByDate, prepayments)
+    .total;
 }
 
 /** Limite disponível = limite cadastrado − valor em aberto (após pagamentos). */
@@ -320,21 +354,26 @@ export function cardNextPayment(
   card: CreditCard,
   subscriptions: CardSubscription[] = [],
   today: Date = new Date(),
-  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>,
+  prepayments: CardInvoicePrepayment[] = []
 ): AggregatedCardPayment | null {
   const todayStr = toISODate(today);
   return (
-    aggregateByDueDate(purchases, card, subscriptions).find((payment) => {
-      if (invoiceIsPaid(invoiceStatusByDate, payment.dueDate)) return false;
+    aggregateByDueDate(purchases, card, subscriptions, prepayments).find(
+      (payment) => {
+        if (invoiceIsPaid(invoiceStatusByDate, payment.dueDate)) return false;
+        // Fatura 100% antecipada não aparece mais como próxima.
+        if (payment.total <= 0.005) return false;
 
-      if (payment.dueDate < todayStr) {
-        const status = invoiceStatusOnDate(invoiceStatusByDate, payment.dueDate);
-        // Vencida só continua como "próxima" se ainda estiver em aberto.
-        return status === "pendente" || status === "atrasado";
+        if (payment.dueDate < todayStr) {
+          const status = invoiceStatusOnDate(invoiceStatusByDate, payment.dueDate);
+          // Vencida só continua como "próxima" se ainda estiver em aberto.
+          return status === "pendente" || status === "atrasado";
+        }
+
+        return true;
       }
-
-      return true;
-    }) ?? null
+    ) ?? null
   );
 }
 
@@ -383,11 +422,10 @@ export function cardChartColor(card: CreditCard, index: number): string {
 
 export interface CardPaymentStats {
   total: number;
-  /** Quanto o dono do cartão paga, descontando a parte dividida. */
-  ownTotal: number;
+  grossTotal: number;
+  prepaidTotal: number;
   purchaseCount: number;
   installmentCount: number;
-  sharedCount: number;
 }
 
 export interface ScopedInstallmentLine extends InstallmentLine {
@@ -457,14 +495,15 @@ export function cardPaymentStatsInMonth(
   year: number,
   month0: number,
   filterCardId?: string | null,
-  subscriptions: CardSubscription[] = []
+  subscriptions: CardSubscription[] = [],
+  prepayments: CardInvoicePrepayment[] = []
 ): CardPaymentStats {
   const purchaseIds = new Set<string>();
   const subscriptionIds = new Set<string>();
-  const sharedIds = new Set<string>();
   let installmentCount = 0;
-  let total = 0;
-  let ownTotal = 0;
+  let grossTotal = 0;
+  let prepaidTotal = 0;
+  const countedDueDates = new Set<string>();
 
   for (const card of cards) {
     if (filterCardId && card.id !== filterCardId) continue;
@@ -475,19 +514,24 @@ export function cardPaymentStatsInMonth(
       if (dueDate.getFullYear() !== year || dueDate.getMonth() !== month0) continue;
       if (line.isSubscription) subscriptionIds.add(line.purchaseId);
       else purchaseIds.add(line.purchaseId);
-      if (line.isShared) sharedIds.add(line.purchaseId);
       installmentCount += 1;
-      total += line.amount;
-      ownTotal += line.ownAmount;
+      grossTotal += line.amount;
+      const dueKey = `${card.id}:${line.dueDate}`;
+      if (!countedDueDates.has(dueKey)) {
+        countedDueDates.add(dueKey);
+        prepaidTotal += prepaymentTotalForDueDate(prepayments, card.id, line.dueDate);
+      }
     }
   }
 
+  const roundedGross = Math.round(grossTotal * 100) / 100;
+  const roundedPrepaid = Math.round(prepaidTotal * 100) / 100;
   return {
-    total: Math.round(total * 100) / 100,
-    ownTotal: Math.round(ownTotal * 100) / 100,
+    total: invoiceNetTotal(roundedGross, roundedPrepaid),
+    grossTotal: roundedGross,
+    prepaidTotal: roundedPrepaid,
     purchaseCount: purchaseIds.size + subscriptionIds.size,
     installmentCount,
-    sharedCount: sharedIds.size,
   };
 }
 
@@ -541,7 +585,8 @@ export interface MonthlyPaymentPoint {
   key: string;
   label: string;
   total: number;
-  ownTotal: number;
+  grossTotal: number;
+  prepaidTotal: number;
   byCard: { cardId: string; name: string; color: string; amount: number }[];
 }
 
@@ -553,7 +598,8 @@ export function paymentsByMonthRange(
   startMonth0: number,
   monthCount: number,
   filterCardId?: string | null,
-  subscriptions: CardSubscription[] = []
+  subscriptions: CardSubscription[] = [],
+  prepayments: CardInvoicePrepayment[] = []
 ): MonthlyPaymentPoint[] {
   const cardMap = new Map(cards.map((c) => [c.id, c]));
   const points: MonthlyPaymentPoint[] = [];
@@ -563,8 +609,9 @@ export function paymentsByMonthRange(
     const year = d.getFullYear();
     const month0 = d.getMonth();
     const key = `${year}-${String(month0 + 1).padStart(2, "0")}`;
-    const byCard = new Map<string, number>();
-    let ownTotal = 0;
+    const byCardGross = new Map<string, number>();
+    const byCardPrepaid = new Map<string, number>();
+    const countedDueDates = new Set<string>();
 
     for (const card of cards) {
       if (filterCardId && card.id !== filterCardId) continue;
@@ -572,28 +619,45 @@ export function paymentsByMonthRange(
       const cardSubs = subscriptions.filter((s) => s.credit_card_id === card.id);
       for (const line of allInstallmentLines(cardPurchases, cardSubs, card)) {
         const ld = parseISODate(line.dueDate);
-        if (ld.getFullYear() === year && ld.getMonth() === month0) {
-          byCard.set(card.id, (byCard.get(card.id) ?? 0) + line.amount);
-          ownTotal += line.ownAmount;
+        if (ld.getFullYear() !== year || ld.getMonth() !== month0) continue;
+        byCardGross.set(card.id, (byCardGross.get(card.id) ?? 0) + line.amount);
+        const dueKey = `${card.id}:${line.dueDate}`;
+        if (!countedDueDates.has(dueKey)) {
+          countedDueDates.add(dueKey);
+          const prepaid = prepaymentTotalForDueDate(
+            prepayments,
+            card.id,
+            line.dueDate
+          );
+          byCardPrepaid.set(card.id, (byCardPrepaid.get(card.id) ?? 0) + prepaid);
         }
       }
     }
 
-    const byCardArr = Array.from(byCard.entries()).map(([cardId, amount]) => {
+    const byCardArr = Array.from(byCardGross.entries()).map(([cardId, gross]) => {
       const card = cardMap.get(cardId)!;
+      const prepaid = byCardPrepaid.get(cardId) ?? 0;
       return {
         cardId,
         name: card.name,
         color: cardChartColor(card, cards.findIndex((c) => c.id === cardId)),
-        amount: Math.round(amount * 100) / 100,
+        amount: invoiceNetTotal(gross, prepaid),
       };
     });
+
+    const grossTotal = Math.round(
+      Array.from(byCardGross.values()).reduce((s, v) => s + v, 0) * 100
+    ) / 100;
+    const prepaidTotal = Math.round(
+      Array.from(byCardPrepaid.values()).reduce((s, v) => s + v, 0) * 100
+    ) / 100;
 
     points.push({
       key,
       label: `${MONTH_NAMES_PT[month0].slice(0, 3)}`,
-      total: Math.round(byCardArr.reduce((s, c) => s + c.amount, 0) * 100) / 100,
-      ownTotal: Math.round(ownTotal * 100) / 100,
+      total: invoiceNetTotal(grossTotal, prepaidTotal),
+      grossTotal,
+      prepaidTotal,
       byCard: byCardArr,
     });
   }
@@ -605,7 +669,8 @@ export function allCardsOpenTotal(
   purchases: CardPurchase[],
   cards: CreditCard[],
   today: Date = new Date(),
-  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>
+  invoiceStatusByDate?: ReadonlyMap<string, TxStatus>,
+  prepayments: CardInvoicePrepayment[] = []
 ): number {
   return cards.reduce(
     (sum, card) =>
@@ -614,7 +679,8 @@ export function allCardsOpenTotal(
         purchases.filter((p) => p.credit_card_id === card.id),
         card,
         today,
-        invoiceStatusByDate
+        invoiceStatusByDate,
+        prepayments.filter((p) => p.credit_card_id === card.id)
       ),
     0
   );

@@ -83,27 +83,19 @@ create table if not exists public.card_purchases (
   installments int not null default 1 check (installments >= 1 and installments <= 48),
   purchase_date date not null,
   category_id uuid references public.categories (id) on delete set null,
-  is_shared boolean not null default false,
-  own_amount numeric(14, 2),
   created_at timestamptz not null default now()
 );
 
--- Compras divididas: total_amount é o valor cheio da fatura e own_amount é a
--- parte que o dono do cartão realmente paga.
-alter table public.card_purchases
-  add column if not exists is_shared boolean not null default false;
-alter table public.card_purchases
-  add column if not exists own_amount numeric(14, 2);
-alter table public.card_purchases
-  drop constraint if exists card_purchases_own_amount_check;
-alter table public.card_purchases
-  add constraint card_purchases_own_amount_check
-  check (own_amount is null or (own_amount > 0 and own_amount <= total_amount));
-alter table public.card_purchases
-  drop constraint if exists card_purchases_shared_own_amount_check;
-alter table public.card_purchases
-  add constraint card_purchases_shared_own_amount_check
-  check (not is_shared or own_amount is not null);
+create table if not exists public.card_invoice_prepayments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  credit_card_id uuid not null references public.credit_cards (id) on delete cascade,
+  invoice_due_date date not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  payment_date date not null default current_date,
+  description text not null default 'Antecipação de fatura',
+  created_at timestamptz not null default now()
+);
 
 create table if not exists public.card_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -120,12 +112,8 @@ create table if not exists public.card_subscriptions (
 create table if not exists public.settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   daily_target numeric(14, 2) not null default 50,
-  cycle_days int not null default 30,
-  shared_purchases_enabled boolean not null default false
+  cycle_days int not null default 30
 );
-
-alter table public.settings
-  add column if not exists shared_purchases_enabled boolean not null default false;
 
 -- Registra apenas uso do assistente para rate limiting. Não armazena prompts.
 create table if not exists public.financial_assistant_requests (
@@ -182,6 +170,10 @@ create index if not exists card_purchases_card_idx
   on public.card_purchases (credit_card_id);
 create index if not exists card_purchases_category_idx
   on public.card_purchases (category_id) where category_id is not null;
+create index if not exists card_invoice_prepayments_card_due_idx
+  on public.card_invoice_prepayments (credit_card_id, invoice_due_date);
+create index if not exists card_invoice_prepayments_user_idx
+  on public.card_invoice_prepayments (user_id);
 create index if not exists card_subscriptions_card_idx
   on public.card_subscriptions (credit_card_id);
 create index if not exists card_subscriptions_user_idx
@@ -212,6 +204,7 @@ alter table public.transactions enable row level security;
 alter table public.settings enable row level security;
 alter table public.credit_cards enable row level security;
 alter table public.card_purchases enable row level security;
+alter table public.card_invoice_prepayments enable row level security;
 alter table public.card_subscriptions enable row level security;
 alter table public.recurrence_rules enable row level security;
 alter table public.financial_assistant_requests enable row level security;
@@ -290,6 +283,20 @@ create policy "card_purchases_update_own" on public.card_purchases
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "card_purchases_delete_own" on public.card_purchases;
 create policy "card_purchases_delete_own" on public.card_purchases
+  for delete using (auth.uid() = user_id);
+
+-- card_invoice_prepayments
+drop policy if exists "card_invoice_prepayments_select_own" on public.card_invoice_prepayments;
+create policy "card_invoice_prepayments_select_own" on public.card_invoice_prepayments
+  for select using (auth.uid() = user_id);
+drop policy if exists "card_invoice_prepayments_insert_own" on public.card_invoice_prepayments;
+create policy "card_invoice_prepayments_insert_own" on public.card_invoice_prepayments
+  for insert with check (auth.uid() = user_id);
+drop policy if exists "card_invoice_prepayments_update_own" on public.card_invoice_prepayments;
+create policy "card_invoice_prepayments_update_own" on public.card_invoice_prepayments
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "card_invoice_prepayments_delete_own" on public.card_invoice_prepayments;
+create policy "card_invoice_prepayments_delete_own" on public.card_invoice_prepayments
   for delete using (auth.uid() = user_id);
 
 -- card_subscriptions

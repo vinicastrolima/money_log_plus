@@ -1,8 +1,8 @@
 "use client";
 
-import { CreditCard, ReceiptText, Users } from "lucide-react";
+import { CreditCard, ReceiptText } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import type { Category } from "@/lib/types";
+import type { CardInvoicePrepayment, Category } from "@/lib/types";
 import type { ScopedInstallmentLine } from "@/lib/cards";
 import { formatCurrency, formatDateBR } from "@/lib/utils";
 
@@ -14,7 +14,8 @@ interface Props {
   lines: ScopedInstallmentLine[];
   categories: Category[];
   showCardName: boolean;
-  showOwnAmounts?: boolean;
+  /** Antecipações do recorte (abatimentos). */
+  prepayments?: CardInvoicePrepayment[];
   onOpenCard?: (cardId: string) => void;
 }
 
@@ -26,18 +27,19 @@ export function InvoiceLinesModal({
   lines,
   categories,
   showCardName,
-  showOwnAmounts = false,
+  prepayments = [],
   onOpenCard,
 }: Props) {
-  const total = lines.reduce((sum, line) => sum + line.amount, 0);
-  const ownTotal = lines.reduce((sum, line) => sum + line.ownAmount, 0);
-  const showOwnTotal = showOwnAmounts && ownTotal < total - 0.005;
+  const grossTotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  const prepaidTotal = prepayments.reduce((sum, item) => sum + item.amount, 0);
+  const netTotal = Math.max(0, Math.round((grossTotal - prepaidTotal) * 100) / 100);
+  const empty = lines.length === 0 && prepayments.length === 0;
 
   return (
     <Modal open={open} onClose={onClose} title={title} className="sm:max-w-xl">
       {subtitle && <p className="-mt-2 mb-4 text-sm text-muted">{subtitle}</p>}
 
-      {lines.length === 0 ? (
+      {empty ? (
         <div className="rounded-2xl border border-dashed border-border px-5 py-10 text-center">
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-surface text-muted">
             <ReceiptText size={20} aria-hidden="true" />
@@ -52,14 +54,25 @@ export function InvoiceLinesModal({
           <div className="mb-3 flex items-start justify-between gap-3 text-xs text-muted">
             <span>
               {lines.length} item{lines.length === 1 ? "" : "s"}
+              {prepayments.length > 0
+                ? ` · ${prepayments.length} antecipação${
+                    prepayments.length === 1 ? "" : "ões"
+                  }`
+                : ""}
             </span>
             <span className="text-right">
-              <span className="block font-semibold text-foreground">
-                {showOwnTotal ? `Cartão ${formatCurrency(total)}` : formatCurrency(total)}
-              </span>
-              {showOwnTotal && (
-                <span className="mt-0.5 block font-semibold text-primary">
-                  Sua parte {formatCurrency(ownTotal)}
+              {prepaidTotal > 0.005 ? (
+                <>
+                  <span className="block font-semibold text-foreground">
+                    Bruto {formatCurrency(grossTotal)}
+                  </span>
+                  <span className="mt-0.5 block font-semibold text-primary">
+                    A pagar {formatCurrency(netTotal)}
+                  </span>
+                </>
+              ) : (
+                <span className="block font-semibold text-foreground">
+                  {formatCurrency(grossTotal)}
                 </span>
               )}
             </span>
@@ -68,22 +81,13 @@ export function InvoiceLinesModal({
             {lines.map((line) => {
               const category = categories.find((item) => item.id === line.categoryId);
               const key = `${line.cardId}-${line.purchaseId}-${line.dueDate}-${line.installmentNumber}`;
-              const shared = showOwnAmounts && line.isShared;
 
               const content = (
                 <>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold">
-                        {line.purchaseDescription}
-                      </p>
-                      {shared && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                          <Users size={11} aria-hidden="true" />
-                          Dividida
-                        </span>
-                      )}
-                    </div>
+                    <p className="truncate text-sm font-semibold">
+                      {line.purchaseDescription}
+                    </p>
                     <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
                       <span>{formatDateBR(line.dueDate)}</span>
                       {showCardName && (
@@ -118,15 +122,8 @@ export function InvoiceLinesModal({
                       )}
                     </p>
                   </div>
-                  <span className="shrink-0 text-right">
-                    <span className="block text-sm font-semibold text-expense">
-                      {formatCurrency(line.amount)}
-                    </span>
-                    {shared && (
-                      <span className="mt-0.5 block text-[11px] font-medium text-primary">
-                        sua parte {formatCurrency(line.ownAmount)}
-                      </span>
-                    )}
+                  <span className="shrink-0 text-sm font-semibold text-expense">
+                    {formatCurrency(line.amount)}
                   </span>
                 </>
               );
@@ -154,6 +151,25 @@ export function InvoiceLinesModal({
                 </li>
               );
             })}
+            {prepayments.map((prepayment) => (
+              <li
+                key={prepayment.id}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-primary/[0.03] p-3.5 sm:p-4"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-primary">
+                    {prepayment.description || "Antecipação"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Pago em {formatDateBR(prepayment.payment_date)} · abate fatura{" "}
+                    {formatDateBR(prepayment.invoice_due_date)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-sm font-semibold text-primary">
+                  −{formatCurrency(prepayment.amount)}
+                </span>
+              </li>
+            ))}
           </ul>
         </>
       )}

@@ -20,20 +20,14 @@ const MAX_VISIBLE_CARDS = 3;
 export interface WalletCardData {
   card: CreditCard;
   openTotal: number;
-  /** Parte em aberto que o dono do cartão paga, descontando compras divididas. */
-  openOwnTotal?: number;
   nextPaymentTotal: number;
   nextPaymentDate: string | null;
+  /** Antecipações já abatidas da próxima fatura. */
+  nextPaymentPrepaid?: number;
   /** Limite disponível após abater faturas pagas (só quando o cartão tem limite). */
   availableLimit?: number | null;
   purchaseCount: number;
   gradientIndex: number;
-}
-
-/** Só mostra o segundo total quando alguma compra dividida muda o valor. */
-function ownTotalToShow(total: number, ownTotal: number | undefined): number | null {
-  if (ownTotal == null) return null;
-  return ownTotal < total - 0.005 ? ownTotal : null;
 }
 
 interface WalletCardVisualProps {
@@ -89,6 +83,11 @@ export function WalletCardVisual({
             <span className="mt-0.5 block truncate text-[1.65rem] font-semibold leading-none tracking-tight tabular-nums sm:text-[1.85rem]">
               {formatCurrency(data.nextPaymentTotal)}
             </span>
+            {data.nextPaymentPrepaid != null && data.nextPaymentPrepaid > 0.005 ? (
+              <span className="mt-1 block text-[11px] font-medium text-emerald-200/90">
+                Antecipado {formatCurrency(data.nextPaymentPrepaid)}
+              </span>
+            ) : null}
             <span className="mt-2 block text-[11px] font-medium text-white/70 sm:text-xs">
               Em aberto {formatCurrency(data.openTotal)}
               {data.nextPaymentDate ? (
@@ -178,16 +177,18 @@ export function WalletDeck({
   const behindCount = visibleCards.length - 1;
   const hiddenCount = Math.max(0, cards.length - visibleCards.length);
   const allOpenTotal = cards.reduce((sum, item) => sum + item.openTotal, 0);
-  const allOpenOwnTotal = cards.reduce(
-    (sum, item) => sum + (item.openOwnTotal ?? item.openTotal),
-    0
-  );
   const allNextPaymentTotal = cards.reduce(
     (sum, item) => sum + item.nextPaymentTotal,
     0
   );
-  const frontCardOwnTotal = ownTotalToShow(frontCard.openTotal, frontCard.openOwnTotal);
-  const allOwnTotal = ownTotalToShow(allOpenTotal, allOpenOwnTotal);
+  const allPrepaidTotal = cards.reduce(
+    (sum, item) => sum + (item.nextPaymentPrepaid ?? 0),
+    0
+  );
+  const frontPrepaid =
+    frontCard.nextPaymentPrepaid != null && frontCard.nextPaymentPrepaid > 0.005
+      ? frontCard.nextPaymentPrepaid
+      : null;
 
   function selectCard(cardId: string) {
     setFrontId(cardId);
@@ -293,11 +294,11 @@ export function WalletDeck({
                 </span>
               </p>
             ) : null}
-            {frontCardOwnTotal !== null ? (
+            {frontPrepaid !== null ? (
               <p className="mt-1 text-sm text-slate-400">
-                Sua parte{" "}
-                <span className="font-medium text-slate-200 tabular-nums">
-                  {formatCurrency(frontCardOwnTotal)}
+                Antecipado{" "}
+                <span className="font-medium text-emerald-300/90 tabular-nums">
+                  {formatCurrency(frontPrepaid)}
                 </span>
               </p>
             ) : null}
@@ -381,11 +382,11 @@ export function WalletDeck({
           <p className="text-xs text-muted">
             {formatCurrency(allNextPaymentTotal)} na próxima fatura ·{" "}
             {formatCurrency(allOpenTotal)} em aberto
-            {allOwnTotal !== null ? (
+            {allPrepaidTotal > 0.005 ? (
               <>
                 {" "}
                 · <span className="font-medium text-primary">
-                  sua parte {formatCurrency(allOwnTotal)}
+                  antecipado {formatCurrency(allPrepaidTotal)}
                 </span>
               </>
             ) : null}
